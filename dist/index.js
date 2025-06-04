@@ -1,8 +1,8 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-const index_js_1 = require("@modelcontextprotocol/sdk/server/index.js");
-const stdio_js_1 = require("@modelcontextprotocol/sdk/server/stdio.js");
-const types_js_1 = require("@modelcontextprotocol/sdk/types.js");
+const index_js_1 = require("@modelContextProtocol/sdk/server/index.js");
+const stdio_js_1 = require("@modelContextProtocol/sdk/server/stdio.js");
+const types_js_1 = require("@modelContextProtocol/sdk/types.js");
 const puppeteer_real_browser_1 = require("puppeteer-real-browser");
 const stealth_actions_1 = require("./stealth-actions");
 // Store browser instance
@@ -256,13 +256,13 @@ const TOOLS = [
     },
     {
         name: 'solve_captcha',
-        description: 'Attempt to solve captchas (if supported)',
+        description: 'Attempt to solve CAPTCHAs (if supported)',
         inputSchema: {
             type: 'object',
             properties: {
                 type: {
                     type: 'string',
-                    enum: ['recaptcha', 'hcaptcha', 'turnstile'],
+                    enum: ['recaptcha', 'hCaptcha', 'turnstile'],
                     description: 'Type of captcha to solve',
                 },
             },
@@ -478,14 +478,15 @@ server.setRequestHandler(types_js_1.CallToolRequestSchema, async (request) => {
         case 'click':
             return await withErrorHandling(async () => {
                 const { page } = await initializeBrowser();
+                const options = args.options || {};
                 if (args.waitForNavigation) {
                     await Promise.all([
                         page.waitForNavigation({ waitUntil: 'networkidle2' }),
-                        page.click(args.selector),
+                        page.click(args.selector, options),
                     ]);
                 }
                 else {
-                    await page.click(args.selector);
+                    await page.click(args.selector, options);
                 }
                 return {
                     content: [
@@ -500,7 +501,11 @@ server.setRequestHandler(types_js_1.CallToolRequestSchema, async (request) => {
             return await withErrorHandling(async () => {
                 const { page } = await initializeBrowser();
                 // Clear existing content first
-                await page.click(args.selector, { clickCount: 3 });
+                await page.click(args.selector);
+                await page.keyboard.down('Control');
+                await page.keyboard.press('A');
+                await page.keyboard.up('Control');
+                await page.keyboard.press('Backspace');
                 await page.type(args.selector, args.text, { delay: args.delay || 100 });
                 return {
                     content: [
