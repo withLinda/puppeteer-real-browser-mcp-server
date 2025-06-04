@@ -138,7 +138,7 @@ npm install -g puppeteer-real-browser-mcp-server
 
 ```bash
 # Clone the repository
-git clone https://github.com/your-organization/puppeteer-real-browser-mcp-server.git
+git clone https://github.com/withLinda/puppeteer-real-browser-mcp-server.git
 cd puppeteer-real-browser-mcp-server
 
 # Install dependencies
@@ -230,7 +230,7 @@ AI: I'll move the cursor using enhanced movement.
 ```text
 User: "Initialize a browser with a proxy server"
 AI: I'll set up the browser with your proxy configuration.
-[Uses browser_init with proxy: "http://proxy.example.com:8080"]
+[Uses browser_init with proxy: "https://proxy.example.com:8080"]
 ```
 
 ## Available Tools
@@ -312,7 +312,7 @@ Please initialize a browser with headless mode enabled and a 30-second timeout
 
 Claude will then use the `browser_init` tool with appropriate parameters:
 
-```javascript
+```json
 {
   "headless": true,
   "connectOption": {
@@ -327,11 +327,11 @@ When initializing with `browser_init`, you can configure:
 - `headless`: true/false (Set to true for headless operation)
 - `disableXvfb`: true/false (Disable X Virtual Framebuffer)
 - `ignoreAllFlags`: true/false (Ignore all Chrome flags)
-- `proxy`: "http://proxy:8080" (Proxy server URL)
+- `proxy`: "https://proxy:8080" (Proxy server URL)
 - `plugins`: ["plugin1", "plugin2"] (Array of plugins to load)
 - `connectOption`: Additional connection options like:
   - `slowMo`: 250 (Slow down operations by milliseconds)
-  - `timeout`: 60000 (Connection timeout)
+  - `timeout`: 60,000 (Connection timeout)
 
 The MCP config file only tells Claude where to find the server - all browser-specific options are configured through your conversations with Claude.
 
@@ -339,16 +339,16 @@ The MCP config file only tells Claude where to find the server - all browser-spe
 
 When initializing the browser with `browser_init`, you can configure:
 
-```javascript
+```json
 {
-  "headless": false,           // Set to true for headless operation
-  "disableXvfb": false,        // Disable X Virtual Framebuffer
-  "ignoreAllFlags": false,     // Ignore all Chrome flags
-  "proxy": "http://proxy:8080", // Proxy server URL
-  "plugins": ["plugin1", "plugin2"], // Array of plugins to load
-  "connectOption": {           // Additional connection options
-    "slowMo": 250,             // Slow down operations by 250ms
-    "timeout": 60000           // Connection timeout
+  "headless": false,
+  "disableXvfb": false,
+  "ignoreAllFlags": false,
+  "proxy": "https://proxy:8080",
+  "plugins": ["plugin1", "plugin2"],
+  "connectOption": {
+    "slowMo": 250,
+    "timeout": 60000
   }
 }
 ```
@@ -356,15 +356,15 @@ When initializing the browser with `browser_init`, you can configure:
 ### Advanced Configuration Examples
 
 #### Using a Proxy
-```javascript
+```json
 {
   "headless": true,
-  "proxy": "http://username:password@proxy.example.com:8080"
+  "proxy": "https://username:password@proxy.example.com:8080"
 }
 ```
 
 #### Stealth Mode with Custom Options
-```javascript
+```json
 {
   "headless": false,
   "ignoreAllFlags": true,
@@ -377,8 +377,9 @@ When initializing the browser with `browser_init`, you can configure:
 ```
 
 #### Enhanced Real Browser Features
-```javascript
-// Using real_click with options
+
+Using real_click with options:
+```json
 {
   "selector": "#submit-button",
   "options": {
@@ -387,8 +388,10 @@ When initializing the browser with `browser_init`, you can configure:
     "delay": 150
   }
 }
+```
 
-// Using real_cursor with coordinates
+Using real_cursor with coordinates:
+```json
 {
   "x": 500,
   "y": 300,

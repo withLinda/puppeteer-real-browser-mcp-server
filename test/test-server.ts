@@ -40,4 +40,6 @@ async function testServer() {
   });
 }
 
-testServer();
+(async () => {
+  await testServer();
+})();

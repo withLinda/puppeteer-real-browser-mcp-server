@@ -1,9 +1,9 @@
-caimport { Server } from '@modelcontextprotocol/sdk/server/index.js';
-import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
+import { Server } from '@modelContextProtocol/sdk/server/index.js';
+import { StdioServerTransport } from '@modelContextProtocol/sdk/server/stdio.js';
 import {
   CallToolRequestSchema,
   ListToolsRequestSchema,
-} from '@modelcontextprotocol/sdk/types.js';
+} from '@modelContextProtocol/sdk/types.js';
 import { connect } from 'puppeteer-real-browser';
 import { humanLikeMouseMove, humanLikeTyping, randomScroll } from './stealth-actions';
 
@@ -276,13 +276,13 @@ const TOOLS = [
   },
   {
     name: 'solve_captcha',
-    description: 'Attempt to solve captchas (if supported)',
+    description: 'Attempt to solve CAPTCHAs (if supported)',
     inputSchema: {
       type: 'object',
       properties: {
         type: {
           type: 'string',
-          enum: ['recaptcha', 'hcaptcha', 'turnstile'],
+          enum: ['recaptcha', 'hCaptcha', 'turnstile'],
           description: 'Type of captcha to solve',
         },
       },
@@ -403,7 +403,7 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
 
 server.setRequestHandler(CallToolRequestSchema, async (request) => {
   const { name, arguments: args } = request.params;
-  
+
   // Type guard to ensure args is defined
   if (!args) {
     throw new Error('Missing arguments for tool call');
@@ -509,13 +509,15 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
       return await withErrorHandling(async () => {
         const { page } = await initializeBrowser();
 
+        const options = (args as any).options || {};
+        
         if ((args as any).waitForNavigation) {
           await Promise.all([
             page.waitForNavigation({ waitUntil: 'networkidle2' }),
-            page.click((args as any).selector),
+            page.click((args as any).selector, options),
           ]);
         } else {
-          await page.click((args as any).selector);
+          await page.click((args as any).selector, options);
         }
 
         return {
@@ -533,7 +535,11 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         const { page } = await initializeBrowser();
 
         // Clear existing content first
-        await page.click((args as any).selector, { clickCount: 3 });
+        await page.click((args as any).selector);
+        await page.keyboard.down('Control');
+        await page.keyboard.press('A');
+        await page.keyboard.up('Control');
+        await page.keyboard.press('Backspace');
         await page.type((args as any).selector, (args as any).text, { delay: (args as any).delay || 100 });
 
         return {
@@ -688,7 +694,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         const { page } = await initializeBrowser();
 
         const options = (args as any).options || { steps: 20 };
-        
+
         if ((args as any).selector) {
           await page.realCursor((args as any).selector, options);
         } else if ((args as any).x !== undefined && (args as any).y !== undefined) {
