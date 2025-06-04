@@ -19,7 +19,7 @@
     "tsx": "latest"
   },
   "keywords": ["mcp", "puppeteer", "browser-automation"],
-  "author": "Your Name",
+  "author": "withlinda13",
   "license": "MIT",
   "bin": {
     "mcp-puppeteer-real-browser": "./dist/index.js"
@@ -28,6 +28,5 @@
     "dist/**/*",
     "README.md",
     "LICENSE"
-  ],
-  "private": true
+  ]
 }
