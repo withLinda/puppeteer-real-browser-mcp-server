@@ -1,0 +1,33 @@
+{
+  "name": "puppeteer-real-browser-mcp-server",
+  "version": "1.0.0",
+  "description": "MCP server for puppeteer-real-browser",
+  "main": "dist/index.js",
+  "scripts": {
+    "build": "tsc",
+    "start": "node dist/index.js",
+    "dev": "tsx src/index.ts",
+    "test": "tsx test/test-server.ts"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "latest",
+    "puppeteer-real-browser": "latest"
+  },
+  "devDependencies": {
+    "typescript": "^5.5.3",
+    "@types/node": "latest",
+    "tsx": "latest"
+  },
+  "keywords": ["mcp", "puppeteer", "browser-automation"],
+  "author": "Your Name",
+  "license": "MIT",
+  "bin": {
+    "mcp-puppeteer-real-browser": "./dist/index.js"
+  },
+  "files": [
+    "dist/**/*",
+    "README.md",
+    "LICENSE"
+  ],
+  "private": true
+}
