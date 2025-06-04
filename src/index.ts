@@ -1,4 +1,4 @@
-import { Server } from '@modelcontextprotocol/sdk/server/index.js';
+caimport { Server } from '@modelcontextprotocol/sdk/server/index.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import {
   CallToolRequestSchema,
@@ -10,6 +10,7 @@ import { humanLikeMouseMove, humanLikeTyping, randomScroll } from './stealth-act
 // Store browser instance
 let browserInstance: any = null;
 let pageInstance: any = null;
+let setTargetFunction: any = null;
 
 // Initialize MCP server
 const server = new Server(
@@ -38,20 +39,39 @@ async function withErrorHandling<T>(
 }
 
 // Browser lifecycle management
-async function initializeBrowser() {
+async function initializeBrowser(options?: any) {
   if (browserInstance) {
     return { browser: browserInstance, page: pageInstance };
   }
 
-  const { browser, page } = await connect({
-    headless: false, // Set to true for production
-    args: ['--no-sandbox', '--disable-setuid-sandbox'],
-    customConfig: {},
-    turnstile: true,   // Enable turnstile solver
-  });
+  const connectOptions: any = {
+    headless: options?.headless ?? false,
+    args: options?.ignoreAllFlags ? [] : ['--no-sandbox', '--disable-setuid-sandbox'],
+    customConfig: options?.customConfig ?? {},
+    turnstile: true,
+    ...(options?.connectOption ?? {}),
+  };
+
+  if (options?.disableXvfb !== undefined) {
+    connectOptions.disableXvfb = options.disableXvfb;
+  }
+
+  if (options?.proxy) {
+    connectOptions.args = connectOptions.args || [];
+    connectOptions.args.push(`--proxy-server=${options.proxy}`);
+  }
+
+  if (options?.plugins && Array.isArray(options.plugins)) {
+    connectOptions.plugins = options.plugins;
+  }
+
+  const result = await connect(connectOptions);
+  const { browser, page } = result;
+  const setTarget = (result as any).setTarget;
 
   browserInstance = browser;
   pageInstance = page;
+  setTargetFunction = setTarget;
 
   // Set up default page settings
   await page.setViewport({ width: 1920, height: 1080 });
@@ -79,6 +99,32 @@ const TOOLS = [
           type: 'boolean',
           description: 'Run browser in headless mode',
           default: false,
+        },
+        disableXvfb: {
+          type: 'boolean',
+          description: 'Disable Xvfb (X Virtual Framebuffer)',
+          default: false,
+        },
+        ignoreAllFlags: {
+          type: 'boolean',
+          description: 'Ignore all Chrome flags',
+          default: false,
+        },
+        proxy: {
+          type: 'string',
+          description: 'Proxy server URL (format: protocol://host:port)',
+        },
+        plugins: {
+          type: 'array',
+          description: 'Array of plugins to load',
+          items: {
+            type: 'string',
+          },
+        },
+        connectOption: {
+          type: 'object',
+          description: 'Additional connection options',
+          additionalProperties: true,
         },
       },
     },
@@ -269,6 +315,85 @@ const TOOLS = [
       properties: {},
     },
   },
+  {
+    name: 'real_click',
+    description: 'Use page.realClick for enhanced clicking with puppeteer-real-browser',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        selector: {
+          type: 'string',
+          description: 'CSS selector of element to click',
+        },
+        options: {
+          type: 'object',
+          description: 'Click options (button, clickCount, delay, etc.)',
+          properties: {
+            button: {
+              type: 'string',
+              enum: ['left', 'right', 'middle'],
+              default: 'left',
+            },
+            clickCount: {
+              type: 'number',
+              default: 1,
+            },
+            delay: {
+              type: 'number',
+              description: 'Delay in milliseconds',
+            },
+          },
+        },
+      },
+      required: ['selector'],
+    },
+  },
+  {
+    name: 'real_cursor',
+    description: 'Use page.realCursor for enhanced cursor movements with puppeteer-real-browser',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        selector: {
+          type: 'string',
+          description: 'CSS selector to move cursor to',
+        },
+        x: {
+          type: 'number',
+          description: 'X coordinate to move cursor to',
+        },
+        y: {
+          type: 'number',
+          description: 'Y coordinate to move cursor to',
+        },
+        options: {
+          type: 'object',
+          description: 'Cursor movement options',
+          properties: {
+            steps: {
+              type: 'number',
+              description: 'Number of movement steps',
+              default: 20,
+            },
+          },
+        },
+      },
+    },
+  },
+  {
+    name: 'set_target',
+    description: 'Use setTarget function from puppeteer-real-browser',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        target: {
+          type: 'string',
+          description: 'Target configuration',
+        },
+      },
+      required: ['target'],
+    },
+  },
 ];
 
 // Register tool handlers
@@ -287,7 +412,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
   switch (name) {
     case 'browser_init':
       return await withErrorHandling(async () => {
-        await initializeBrowser();
+        await initializeBrowser(args as any);
         return {
           content: [
             {
@@ -540,6 +665,67 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
           ],
         };
       }, 'Failed to perform random scrolling');
+
+    case 'real_click':
+      return await withErrorHandling(async () => {
+        const { page } = await initializeBrowser();
+
+        const options = (args as any).options || {};
+        await page.realClick((args as any).selector, options);
+
+        return {
+          content: [
+            {
+              type: 'text',
+              text: `Real click performed on element: ${(args as any).selector}`,
+            },
+          ],
+        };
+      }, 'Failed to perform real click');
+
+    case 'real_cursor':
+      return await withErrorHandling(async () => {
+        const { page } = await initializeBrowser();
+
+        const options = (args as any).options || { steps: 20 };
+        
+        if ((args as any).selector) {
+          await page.realCursor((args as any).selector, options);
+        } else if ((args as any).x !== undefined && (args as any).y !== undefined) {
+          await page.realCursor((args as any).x, (args as any).y, options);
+        } else {
+          throw new Error('Either selector or x,y coordinates must be provided');
+        }
+
+        return {
+          content: [
+            {
+              type: 'text',
+              text: 'Real cursor movement performed',
+            },
+          ],
+        };
+      }, 'Failed to perform real cursor movement');
+
+    case 'set_target':
+      return await withErrorHandling(async () => {
+        await initializeBrowser();
+
+        if (!setTargetFunction) {
+          throw new Error('setTarget function not available');
+        }
+
+        await setTargetFunction((args as any).target);
+
+        return {
+          content: [
+            {
+              type: 'text',
+              text: `Target set to: ${(args as any).target}`,
+            },
+          ],
+        };
+      }, 'Failed to set target');
 
     default:
       throw new Error(`Unknown tool: ${name}`);
