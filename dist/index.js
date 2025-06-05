@@ -56,7 +56,7 @@ async function initializeBrowser(options) {
     const setTarget = result.setTarget;
     browserInstance = browser;
     pageInstance = page;
-    setTargetFunction = setTarget;
+    setTargetFunction = setTarget || null;
     // Set up default page settings
     await page.setViewport({ width: 1920, height: 1080 });
     return { browser, page };
@@ -623,6 +623,9 @@ server.setRequestHandler(types_js_1.CallToolRequestSchema, async (request) => {
         case 'real_click':
             return await withErrorHandling(async () => {
                 const { page } = await initializeBrowser();
+                if (typeof page.realClick !== 'function') {
+                    throw new Error('realClick method not available on page object');
+                }
                 const options = args.options || {};
                 await page.realClick(args.selector, options);
                 return {
@@ -637,12 +640,14 @@ server.setRequestHandler(types_js_1.CallToolRequestSchema, async (request) => {
         case 'real_cursor':
             return await withErrorHandling(async () => {
                 const { page } = await initializeBrowser();
-                const options = args.options || { steps: 20 };
+                if (!page.realCursor || typeof page.realCursor !== 'object') {
+                    throw new Error('realCursor object not available on page object');
+                }
                 if (args.selector) {
-                    await page.realCursor(args.selector, options);
+                    await page.realCursor.moveTo(args.selector);
                 }
                 else if (args.x !== undefined && args.y !== undefined) {
-                    await page.realCursor(args.x, args.y, options);
+                    await page.realCursor.moveTo(args.x, args.y);
                 }
                 else {
                     throw new Error('Either selector or x,y coordinates must be provided');
@@ -660,7 +665,7 @@ server.setRequestHandler(types_js_1.CallToolRequestSchema, async (request) => {
             return await withErrorHandling(async () => {
                 await initializeBrowser();
                 if (!setTargetFunction) {
-                    throw new Error('setTarget function not available');
+                    throw new Error('setTarget function not available in current puppeteer-real-browser version');
                 }
                 await setTargetFunction(args.target);
                 return {

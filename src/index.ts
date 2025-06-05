@@ -72,7 +72,7 @@ async function initializeBrowser(options?: any) {
 
   browserInstance = browser;
   pageInstance = page;
-  setTargetFunction = setTarget;
+  setTargetFunction = setTarget || null;
 
   // Set up default page settings
   await page.setViewport({ width: 1920, height: 1080 });
@@ -677,6 +677,10 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
       return await withErrorHandling(async () => {
         const { page } = await initializeBrowser();
 
+        if (typeof page.realClick !== 'function') {
+          throw new Error('realClick method not available on page object');
+        }
+
         const options = (args as any).options || {};
         await page.realClick((args as any).selector, options);
 
@@ -694,12 +698,14 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
       return await withErrorHandling(async () => {
         const { page } = await initializeBrowser();
 
-        const options = (args as any).options || { steps: 20 };
+        if (!page.realCursor || typeof page.realCursor !== 'object') {
+          throw new Error('realCursor object not available on page object');
+        }
 
         if ((args as any).selector) {
-          await page.realCursor((args as any).selector, options);
+          await page.realCursor.moveTo((args as any).selector);
         } else if ((args as any).x !== undefined && (args as any).y !== undefined) {
-          await page.realCursor((args as any).x, (args as any).y, options);
+          await page.realCursor.moveTo((args as any).x, (args as any).y);
         } else {
           throw new Error('Either selector or x,y coordinates must be provided');
         }
@@ -719,7 +725,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         await initializeBrowser();
 
         if (!setTargetFunction) {
-          throw new Error('setTarget function not available');
+          throw new Error('setTarget function not available in current puppeteer-real-browser version');
         }
 
         await setTargetFunction((args as any).target);
