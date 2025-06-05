@@ -36,13 +36,10 @@ This is an MCP (Model Context Protocol) server that lets AI assistants like Clau
 - Download and install Node.js (version 18 or higher)
 - Verify installation by opening terminal/command prompt and typing: `node --version`
 
-#### 2. Install the MCP Server
-Open your terminal/command prompt and run:
-```bash
-npm install -g puppeteer-real-browser-mcp-server
-```
+#### 2. Set Up with Claude Desktop (No Installation Required)
+The npx command will automatically download and run the latest version, so no manual installation is needed.
 
-#### 3. Set Up with Claude Desktop
+#### 3. Configure Claude Desktop
 
 **For Windows:**
 1. Open File Explorer and navigate to: `%APPDATA%\Claude\`
@@ -53,7 +50,8 @@ npm install -g puppeteer-real-browser-mcp-server
 {
   "mcpServers": {
     "puppeteer-real-browser": {
-      "command": "puppeteer-real-browser-mcp-server"
+      "command": "npx",
+      "args": ["puppeteer-real-browser-mcp-server@latest"]
     }
   }
 }
@@ -158,7 +156,8 @@ Add to Claude Desktop config:
 {
   "mcpServers": {
     "puppeteer-real-browser": {
-      "command": "puppeteer-real-browser-mcp-server"
+      "command": "npx",
+      "args": ["puppeteer-real-browser-mcp-server@latest"]
     }
   }
 }
@@ -413,10 +412,12 @@ For advanced users, you can modify the server behavior by editing the source cod
 
 ### Common Issues
 
-1. **"command not found" error**
-   - Make sure you installed globally: `npm install -g puppeteer-real-browser-mcp-server`
+1. **"command not found" or "syntax error" when using npx**
+   - This was fixed in version 1.0.3 with the addition of a proper shebang line
+   - Make sure you're using the latest version: `npx puppeteer-real-browser-mcp-server@latest`
+   - For global installation: `npm install -g puppeteer-real-browser-mcp-server@latest`
+   - If still having issues, install globally: `npm install -g puppeteer-real-browser-mcp-server`
    - Check your PATH includes npm global binaries: `npm config get prefix`
-   - Try reinstalling: `npm uninstall -g puppeteer-real-browser-mcp-server && npm install -g puppeteer-real-browser-mcp-server`
 
 2. **Browser won't start**
    - Check if Chrome/Chromium is installed
