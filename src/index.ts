@@ -11,7 +11,6 @@ import { humanLikeMouseMove, humanLikeTyping, randomScroll } from './stealth-act
 // Store browser instance
 let browserInstance: any = null;
 let pageInstance: any = null;
-let setTargetFunction: any = null;
 
 // Initialize MCP server
 const server = new Server(
@@ -68,11 +67,9 @@ async function initializeBrowser(options?: any) {
 
   const result = await connect(connectOptions);
   const { browser, page } = result;
-  const setTarget = (result as any).setTarget;
 
   browserInstance = browser;
   pageInstance = page;
-  setTargetFunction = setTarget || null;
 
   // Set up default page settings
   await page.setViewport({ width: 1920, height: 1080 });
@@ -379,20 +376,6 @@ const TOOLS = [
           },
         },
       },
-    },
-  },
-  {
-    name: 'set_target',
-    description: 'Use setTarget function from puppeteer-real-browser',
-    inputSchema: {
-      type: 'object',
-      properties: {
-        target: {
-          type: 'string',
-          description: 'Target configuration',
-        },
-      },
-      required: ['target'],
     },
   },
 ];
@@ -719,26 +702,6 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
           ],
         };
       }, 'Failed to perform real cursor movement');
-
-    case 'set_target':
-      return await withErrorHandling(async () => {
-        await initializeBrowser();
-
-        if (!setTargetFunction) {
-          throw new Error('setTarget function not available in current puppeteer-real-browser version');
-        }
-
-        await setTargetFunction((args as any).target);
-
-        return {
-          content: [
-            {
-              type: 'text',
-              text: `Target set to: ${(args as any).target}`,
-            },
-          ],
-        };
-      }, 'Failed to set target');
 
     default:
       throw new Error(`Unknown tool: ${name}`);

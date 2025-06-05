@@ -9,7 +9,6 @@ const stealth_actions_1 = require("./stealth-actions");
 // Store browser instance
 let browserInstance = null;
 let pageInstance = null;
-let setTargetFunction = null;
 // Initialize MCP server
 const server = new index_js_1.Server({
     name: 'puppeteer-real-browser-mcp-server',
@@ -53,10 +52,8 @@ async function initializeBrowser(options) {
     }
     const result = await (0, puppeteer_real_browser_1.connect)(connectOptions);
     const { browser, page } = result;
-    const setTarget = result.setTarget;
     browserInstance = browser;
     pageInstance = page;
-    setTargetFunction = setTarget || null;
     // Set up default page settings
     await page.setViewport({ width: 1920, height: 1080 });
     return { browser, page };
@@ -361,20 +358,6 @@ const TOOLS = [
             },
         },
     },
-    {
-        name: 'set_target',
-        description: 'Use setTarget function from puppeteer-real-browser',
-        inputSchema: {
-            type: 'object',
-            properties: {
-                target: {
-                    type: 'string',
-                    description: 'Target configuration',
-                },
-            },
-            required: ['target'],
-        },
-    },
 ];
 // Register tool handlers
 server.setRequestHandler(types_js_1.ListToolsRequestSchema, async () => ({
@@ -661,22 +644,6 @@ server.setRequestHandler(types_js_1.CallToolRequestSchema, async (request) => {
                     ],
                 };
             }, 'Failed to perform real cursor movement');
-        case 'set_target':
-            return await withErrorHandling(async () => {
-                await initializeBrowser();
-                if (!setTargetFunction) {
-                    throw new Error('setTarget function not available in current puppeteer-real-browser version');
-                }
-                await setTargetFunction(args.target);
-                return {
-                    content: [
-                        {
-                            type: 'text',
-                            text: `Target set to: ${args.target}`,
-                        },
-                    ],
-                };
-            }, 'Failed to set target');
         default:
             throw new Error(`Unknown tool: ${name}`);
     }
