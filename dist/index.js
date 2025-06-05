@@ -293,71 +293,6 @@ const TOOLS = [
             properties: {},
         },
     },
-    {
-        name: 'real_click',
-        description: 'Use page.realClick for enhanced clicking with puppeteer-real-browser',
-        inputSchema: {
-            type: 'object',
-            properties: {
-                selector: {
-                    type: 'string',
-                    description: 'CSS selector of element to click',
-                },
-                options: {
-                    type: 'object',
-                    description: 'Click options (button, clickCount, delay, etc.)',
-                    properties: {
-                        button: {
-                            type: 'string',
-                            enum: ['left', 'right', 'middle'],
-                            default: 'left',
-                        },
-                        clickCount: {
-                            type: 'number',
-                            default: 1,
-                        },
-                        delay: {
-                            type: 'number',
-                            description: 'Delay in milliseconds',
-                        },
-                    },
-                },
-            },
-            required: ['selector'],
-        },
-    },
-    {
-        name: 'real_cursor',
-        description: 'Use page.realCursor for enhanced cursor movements with puppeteer-real-browser',
-        inputSchema: {
-            type: 'object',
-            properties: {
-                selector: {
-                    type: 'string',
-                    description: 'CSS selector to move cursor to',
-                },
-                x: {
-                    type: 'number',
-                    description: 'X coordinate to move cursor to',
-                },
-                y: {
-                    type: 'number',
-                    description: 'Y coordinate to move cursor to',
-                },
-                options: {
-                    type: 'object',
-                    description: 'Cursor movement options',
-                    properties: {
-                        steps: {
-                            type: 'number',
-                            description: 'Number of movement steps',
-                            default: 20,
-                        },
-                    },
-                },
-            },
-        },
-    },
 ];
 // Register tool handlers
 server.setRequestHandler(types_js_1.ListToolsRequestSchema, async () => ({
@@ -603,47 +538,6 @@ server.setRequestHandler(types_js_1.CallToolRequestSchema, async (request) => {
                     ],
                 };
             }, 'Failed to perform random scrolling');
-        case 'real_click':
-            return await withErrorHandling(async () => {
-                const { page } = await initializeBrowser();
-                if (typeof page.realClick !== 'function') {
-                    throw new Error('realClick method not available on page object');
-                }
-                const options = args.options || {};
-                await page.realClick(args.selector, options);
-                return {
-                    content: [
-                        {
-                            type: 'text',
-                            text: `Real click performed on element: ${args.selector}`,
-                        },
-                    ],
-                };
-            }, 'Failed to perform real click');
-        case 'real_cursor':
-            return await withErrorHandling(async () => {
-                const { page } = await initializeBrowser();
-                if (!page.realCursor || typeof page.realCursor !== 'object') {
-                    throw new Error('realCursor object not available on page object');
-                }
-                if (args.selector) {
-                    await page.realCursor.moveTo(args.selector);
-                }
-                else if (args.x !== undefined && args.y !== undefined) {
-                    await page.realCursor.moveTo(args.x, args.y);
-                }
-                else {
-                    throw new Error('Either selector or x,y coordinates must be provided');
-                }
-                return {
-                    content: [
-                        {
-                            type: 'text',
-                            text: 'Real cursor movement performed',
-                        },
-                    ],
-                };
-            }, 'Failed to perform real cursor movement');
         default:
             throw new Error(`Unknown tool: ${name}`);
     }
