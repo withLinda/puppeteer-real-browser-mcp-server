@@ -30,7 +30,7 @@
     "url": "https://github.com/withLinda/puppeteer-real-browser-mcp-server/issues"
   },
   "bin": {
-    "mcp-puppeteer-real-browser": "./dist/index.js"
+    "puppeteer-real-browser-mcp-server": "./dist/index.js"
   },
   "files": [
     "dist/**/*",
