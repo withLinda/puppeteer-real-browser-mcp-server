@@ -122,7 +122,23 @@ screenshots, extract content, and more.
 
 - Node.js >= 18.0.0
 - npm or yarn
+- Google Chrome or Chromium browser installed
 - Basic understanding of TypeScript/JavaScript (for development)
+
+### Platform-Specific Requirements
+
+**Windows:**
+- Google Chrome must be installed in one of the standard locations:
+  - `C:\Program Files\Google\Chrome\Application\chrome.exe`
+  - `C:\Program Files (x86)\Google\Chrome\Application\chrome.exe`
+  - `%LOCALAPPDATA%\Google\Chrome\Application\chrome.exe`
+
+**macOS:**
+- Google Chrome or Chromium must be installed in `/Applications/`
+
+**Linux:**
+- Install Chrome/Chromium: `sudo apt-get install -y google-chrome-stable` or `sudo apt-get install -y chromium-browser`
+- Install xvfb for headless operation: `sudo apt-get install -y xvfb`
 
 ## Installation
 
@@ -300,6 +316,16 @@ puppeteer-real-browser implementation.
 
 ## Configuration
 
+### Automatic Chrome Path Detection
+
+The server automatically detects Chrome installation paths across different operating systems:
+
+- **Windows**: Searches common installation directories including Program Files and user-specific locations
+- **macOS**: Looks for Chrome in `/Applications/Google Chrome.app/`
+- **Linux**: Checks multiple locations including `/usr/bin/google-chrome`, `/usr/bin/chromium-browser`, and snap installations
+
+If Chrome is not found automatically, you can specify a custom path using the `customConfig.chromePath` option when initializing the browser.
+
 ### Configuring Custom Options (like headless mode)
 Custom options like headless mode are **not configured in the MCP config file**. Instead, they're passed when initializing the browser using the `browser_init` tool:
 
@@ -353,6 +379,15 @@ When initializing the browser with `browser_init`, you can configure:
 ```
 
 ### Advanced Configuration Examples
+
+#### Specifying Custom Chrome Path
+```json
+{
+  "customConfig": {
+    "chromePath": "C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe"
+  }
+}
+```
 
 #### Using a Proxy
 ```json
@@ -420,10 +455,18 @@ For advanced users, you can modify the server behavior by editing the source cod
    - Check your PATH includes npm global binaries: `npm config get prefix`
 
 2. **Browser won't start**
-   - Check if Chrome/Chromium is installed
-   - On Linux: Install dependencies: `sudo apt-get install -y chromium-browser`
-   - On Windows: Make sure you have Chrome installed
+   - Check if Chrome/Chromium is installed in standard locations
+   - **Windows specific**:
+     - Verify Chrome is installed at `C:\Program Files\Google\Chrome\Application\chrome.exe` or `C:\Program Files (x86)\Google\Chrome\Application\chrome.exe`
+     - If Chrome is in a custom location, specify it manually:
+       ```
+       Ask Claude: "Initialize browser with custom Chrome path at [your-chrome-path]"
+       ```
+     - Try running command prompt as Administrator
+   - **Linux**: Install dependencies: `sudo apt-get install -y google-chrome-stable`
+   - **macOS**: Ensure Chrome is in `/Applications/`
    - Try with `headless: true` first
+   - Check console output for Chrome path detection messages
 
 3. **Claude doesn't see the MCP server**
    - Verify `claude_desktop_config.json` is in the correct location
@@ -470,7 +513,18 @@ A: puppeteer-real-browser includes anti-detection features, but no solution is 1
 A: Yes, through the `plugins` option in browser_init.
 
 **Q: Does it work on all operating systems?**
-A: Yes, tested on Windows, macOS, and Linux.
+A: Yes, tested on Windows, macOS, and Linux. The server automatically detects Chrome installations on all platforms.
+
+**Q: What if Chrome is installed in a non-standard location?**
+A: Use the `customConfig.chromePath` option to specify the exact path to your Chrome executable. For example: `{"customConfig": {"chromePath": "C:\\Custom\\Chrome\\chrome.exe"}}`
+
+**Q: Why am I getting "Chrome not found" errors on Windows?**
+A: Make sure Chrome is installed in one of these locations:
+- `C:\Program Files\Google\Chrome\Application\chrome.exe`
+- `C:\Program Files (x86)\Google\Chrome\Application\chrome.exe`
+- `%LOCALAPPDATA%\Google\Chrome\Application\chrome.exe`
+
+If installed elsewhere, specify the path manually using `customConfig.chromePath`.
 
 ### Debug Mode
 

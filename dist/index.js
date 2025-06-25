@@ -1,11 +1,46 @@
 #!/usr/bin/env node
 "use strict";
+var __createBinding = (this && this.__createBinding) || (Object.create ? (function(o, m, k, k2) {
+    if (k2 === undefined) k2 = k;
+    var desc = Object.getOwnPropertyDescriptor(m, k);
+    if (!desc || ("get" in desc ? !m.__esModule : desc.writable || desc.configurable)) {
+      desc = { enumerable: true, get: function() { return m[k]; } };
+    }
+    Object.defineProperty(o, k2, desc);
+}) : (function(o, m, k, k2) {
+    if (k2 === undefined) k2 = k;
+    o[k2] = m[k];
+}));
+var __setModuleDefault = (this && this.__setModuleDefault) || (Object.create ? (function(o, v) {
+    Object.defineProperty(o, "default", { enumerable: true, value: v });
+}) : function(o, v) {
+    o["default"] = v;
+});
+var __importStar = (this && this.__importStar) || (function () {
+    var ownKeys = function(o) {
+        ownKeys = Object.getOwnPropertyNames || function (o) {
+            var ar = [];
+            for (var k in o) if (Object.prototype.hasOwnProperty.call(o, k)) ar[ar.length] = k;
+            return ar;
+        };
+        return ownKeys(o);
+    };
+    return function (mod) {
+        if (mod && mod.__esModule) return mod;
+        var result = {};
+        if (mod != null) for (var k = ownKeys(mod), i = 0; i < k.length; i++) if (k[i] !== "default") __createBinding(result, mod, k[i]);
+        __setModuleDefault(result, mod);
+        return result;
+    };
+})();
 Object.defineProperty(exports, "__esModule", { value: true });
 const index_js_1 = require("@modelContextProtocol/sdk/server/index.js");
 const stdio_js_1 = require("@modelContextProtocol/sdk/server/stdio.js");
 const types_js_1 = require("@modelContextProtocol/sdk/types.js");
 const puppeteer_real_browser_1 = require("puppeteer-real-browser");
 const stealth_actions_1 = require("./stealth-actions");
+const fs = __importStar(require("fs"));
+const path = __importStar(require("path"));
 // Store browser instance
 let browserInstance = null;
 let pageInstance = null;
@@ -28,15 +63,69 @@ async function withErrorHandling(operation, errorMessage) {
         throw new Error(`${errorMessage}: ${error instanceof Error ? error.message : String(error)}`);
     }
 }
+// Chrome path detection for cross-platform support
+function detectChromePath() {
+    const platform = process.platform;
+    let possiblePaths = [];
+    switch (platform) {
+        case 'win32':
+            possiblePaths = [
+                'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe',
+                'C:\\Program Files (x86)\\Google\\Chrome\\Application\\chrome.exe',
+                path.join(process.env.LOCALAPPDATA || '', 'Google\\Chrome\\Application\\chrome.exe'),
+                path.join(process.env.PROGRAMFILES || '', 'Google\\Chrome\\Application\\chrome.exe'),
+                path.join(process.env['PROGRAMFILES(X86)'] || '', 'Google\\Chrome\\Application\\chrome.exe')
+            ];
+            break;
+        case 'darwin':
+            possiblePaths = [
+                '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome',
+                '/Applications/Chromium.app/Contents/MacOS/Chromium'
+            ];
+            break;
+        case 'linux':
+            possiblePaths = [
+                '/usr/bin/google-chrome',
+                '/usr/bin/google-chrome-stable',
+                '/usr/bin/chromium-browser',
+                '/usr/bin/chromium',
+                '/snap/bin/chromium'
+            ];
+            break;
+        default:
+            console.warn(`Platform ${platform} not explicitly supported for Chrome path detection`);
+            return null;
+    }
+    for (const chromePath of possiblePaths) {
+        try {
+            if (fs.existsSync(chromePath)) {
+                console.log(`Found Chrome at: ${chromePath}`);
+                return chromePath;
+            }
+        }
+        catch (error) {
+            // Continue to next path
+        }
+    }
+    console.warn(`Chrome not found at any expected paths for platform: ${platform}`);
+    return null;
+}
 // Browser lifecycle management
 async function initializeBrowser(options) {
     if (browserInstance) {
         return { browser: browserInstance, page: pageInstance };
     }
+    // Detect Chrome path for cross-platform support
+    const detectedChromePath = detectChromePath();
+    const customConfig = options?.customConfig ?? {};
+    // Add detected Chrome path if found and not already specified
+    if (detectedChromePath && !customConfig.chromePath) {
+        customConfig.chromePath = detectedChromePath;
+    }
     const connectOptions = {
         headless: options?.headless ?? false,
         args: options?.ignoreAllFlags ? [] : ['--no-sandbox', '--disable-setuid-sandbox'],
-        customConfig: options?.customConfig ?? {},
+        customConfig,
         turnstile: true,
         ...(options?.connectOption ?? {}),
     };
@@ -69,7 +158,7 @@ async function closeBrowser() {
 const TOOLS = [
     {
         name: 'browser_init',
-        description: 'Initialize a new browser instance with anti-detection features',
+        description: 'Initialize a new browser instance with anti-detection features and automatic Chrome path detection',
         inputSchema: {
             type: 'object',
             properties: {
@@ -102,6 +191,17 @@ const TOOLS = [
                 connectOption: {
                     type: 'object',
                     description: 'Additional connection options',
+                    additionalProperties: true,
+                },
+                customConfig: {
+                    type: 'object',
+                    description: 'Custom configuration for Chrome launcher. Use chromePath to specify custom Chrome executable path',
+                    properties: {
+                        chromePath: {
+                            type: 'string',
+                            description: 'Custom path to Chrome executable (auto-detected if not specified)',
+                        },
+                    },
                     additionalProperties: true,
                 },
             },

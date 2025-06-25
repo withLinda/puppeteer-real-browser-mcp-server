@@ -7,6 +7,8 @@ import {
 } from '@modelContextProtocol/sdk/types.js';
 import { connect } from 'puppeteer-real-browser';
 import { humanLikeMouseMove, humanLikeTyping, randomScroll } from './stealth-actions';
+import * as fs from 'fs';
+import * as path from 'path';
 
 // Store browser instance
 let browserInstance: any = null;
@@ -38,16 +40,76 @@ async function withErrorHandling<T>(
   }
 }
 
+// Chrome path detection for cross-platform support
+function detectChromePath(): string | null {
+  const platform = process.platform;
+  
+  let possiblePaths: string[] = [];
+  
+  switch (platform) {
+    case 'win32':
+      possiblePaths = [
+        'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe',
+        'C:\\Program Files (x86)\\Google\\Chrome\\Application\\chrome.exe',
+        path.join(process.env.LOCALAPPDATA || '', 'Google\\Chrome\\Application\\chrome.exe'),
+        path.join(process.env.PROGRAMFILES || '', 'Google\\Chrome\\Application\\chrome.exe'),
+        path.join(process.env['PROGRAMFILES(X86)'] || '', 'Google\\Chrome\\Application\\chrome.exe')
+      ];
+      break;
+    case 'darwin':
+      possiblePaths = [
+        '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome',
+        '/Applications/Chromium.app/Contents/MacOS/Chromium'
+      ];
+      break;
+    case 'linux':
+      possiblePaths = [
+        '/usr/bin/google-chrome',
+        '/usr/bin/google-chrome-stable',
+        '/usr/bin/chromium-browser',
+        '/usr/bin/chromium',
+        '/snap/bin/chromium'
+      ];
+      break;
+    default:
+      console.warn(`Platform ${platform} not explicitly supported for Chrome path detection`);
+      return null;
+  }
+  
+  for (const chromePath of possiblePaths) {
+    try {
+      if (fs.existsSync(chromePath)) {
+        console.log(`Found Chrome at: ${chromePath}`);
+        return chromePath;
+      }
+    } catch (error) {
+      // Continue to next path
+    }
+  }
+  
+  console.warn(`Chrome not found at any expected paths for platform: ${platform}`);
+  return null;
+}
+
 // Browser lifecycle management
 async function initializeBrowser(options?: any) {
   if (browserInstance) {
     return { browser: browserInstance, page: pageInstance };
   }
 
+  // Detect Chrome path for cross-platform support
+  const detectedChromePath = detectChromePath();
+  const customConfig = options?.customConfig ?? {};
+  
+  // Add detected Chrome path if found and not already specified
+  if (detectedChromePath && !customConfig.chromePath) {
+    customConfig.chromePath = detectedChromePath;
+  }
+
   const connectOptions: any = {
     headless: options?.headless ?? false,
     args: options?.ignoreAllFlags ? [] : ['--no-sandbox', '--disable-setuid-sandbox'],
-    customConfig: options?.customConfig ?? {},
+    customConfig,
     turnstile: true,
     ...(options?.connectOption ?? {}),
   };
@@ -89,7 +151,7 @@ async function closeBrowser() {
 const TOOLS = [
   {
     name: 'browser_init',
-    description: 'Initialize a new browser instance with anti-detection features',
+    description: 'Initialize a new browser instance with anti-detection features and automatic Chrome path detection',
     inputSchema: {
       type: 'object',
       properties: {
@@ -122,6 +184,17 @@ const TOOLS = [
         connectOption: {
           type: 'object',
           description: 'Additional connection options',
+          additionalProperties: true,
+        },
+        customConfig: {
+          type: 'object',
+          description: 'Custom configuration for Chrome launcher. Use chromePath to specify custom Chrome executable path',
+          properties: {
+            chromePath: {
+              type: 'string',
+              description: 'Custom path to Chrome executable (auto-detected if not specified)',
+            },
+          },
           additionalProperties: true,
         },
       },
