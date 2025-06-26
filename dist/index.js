@@ -462,20 +462,6 @@ const TOOLS = [
         },
     },
     {
-        name: 'human_like_click',
-        description: 'Click with human-like mouse movement',
-        inputSchema: {
-            type: 'object',
-            properties: {
-                selector: {
-                    type: 'string',
-                    description: 'CSS selector of element to click',
-                },
-            },
-            required: ['selector'],
-        },
-    },
-    {
         name: 'solve_captcha',
         description: 'Attempt to solve CAPTCHAs (if supported)',
         inputSchema: {
@@ -488,24 +474,6 @@ const TOOLS = [
                 },
             },
             required: ['type'],
-        },
-    },
-    {
-        name: 'human_like_type',
-        description: 'Type text with human-like timing variations',
-        inputSchema: {
-            type: 'object',
-            properties: {
-                selector: {
-                    type: 'string',
-                    description: 'CSS selector of input element',
-                },
-                text: {
-                    type: 'string',
-                    description: 'Text to type',
-                },
-            },
-            required: ['selector', 'text'],
         },
     },
     {
@@ -631,25 +599,67 @@ server.setRequestHandler(types_js_1.CallToolRequestSchema, async (request) => {
             }, 'Failed to get content');
         case 'click':
             return await withErrorHandling(async () => {
-                const { page } = await initializeBrowser();
-                const options = args.options || {};
-                if (args.waitForNavigation) {
-                    await Promise.all([
-                        page.waitForNavigation({ waitUntil: 'networkidle2' }),
-                        page.click(args.selector, options),
-                    ]);
-                }
-                else {
-                    await page.click(args.selector, options);
-                }
-                return {
-                    content: [
-                        {
-                            type: 'text',
-                            text: `Clicked element: ${args.selector}`,
-                        },
-                    ],
-                };
+                return await withRetry(async () => {
+                    const { page } = await initializeBrowser();
+                    const selector = args.selector;
+                    // Pre-validation: Check if element exists using get_content functionality
+                    try {
+                        const element = await page.$(selector);
+                        if (!element) {
+                            throw new Error(`Element not found: ${selector}. Please verify the selector is correct and the element exists on the page.`);
+                        }
+                        // Wait for element to be ready
+                        await page.waitForSelector(selector, { timeout: 5000 });
+                        // Check element visibility
+                        const boundingBox = await element.boundingBox();
+                        if (!boundingBox) {
+                            console.warn(`Element ${selector} has no bounding box, attempting JavaScript click`);
+                            // Fallback to JavaScript click
+                            await page.$eval(selector, (el) => el.click());
+                        }
+                        else {
+                            // Standard click with options
+                            const options = args.options || {};
+                            if (args.waitForNavigation) {
+                                await Promise.all([
+                                    page.waitForNavigation({ waitUntil: 'networkidle2' }),
+                                    page.click(selector, options),
+                                ]);
+                            }
+                            else {
+                                await page.click(selector, options);
+                            }
+                        }
+                        return {
+                            content: [
+                                {
+                                    type: 'text',
+                                    text: `Clicked element: ${selector}`,
+                                },
+                            ],
+                        };
+                    }
+                    catch (error) {
+                        if (error instanceof Error && error.message.includes('not found')) {
+                            throw error; // Re-throw element not found errors with our custom message
+                        }
+                        // For other errors, try JavaScript click as fallback
+                        try {
+                            await page.$eval(selector, (el) => el.click());
+                            return {
+                                content: [
+                                    {
+                                        type: 'text',
+                                        text: `Clicked element using JavaScript fallback: ${selector}`,
+                                    },
+                                ],
+                            };
+                        }
+                        catch (fallbackError) {
+                            throw new Error(`Click failed: ${error instanceof Error ? error.message : String(error)}. Fallback also failed: ${fallbackError instanceof Error ? fallbackError.message : String(fallbackError)}`);
+                        }
+                    }
+                });
             }, 'Failed to click element');
         case 'type':
             return await withErrorHandling(async () => {
@@ -705,32 +715,6 @@ server.setRequestHandler(types_js_1.CallToolRequestSchema, async (request) => {
                     ],
                 };
             }, 'Failed to close browser');
-        case 'human_like_click':
-            return await withErrorHandling(async () => {
-                const { page } = await initializeBrowser();
-                // Get element position
-                const element = await page.$(args.selector);
-                if (!element)
-                    throw new Error(`Element not found: ${args.selector}`);
-                const boundingBox = await element.boundingBox();
-                if (!boundingBox)
-                    throw new Error(`Cannot get position of element: ${args.selector}`);
-                // Calculate center point
-                const x = boundingBox.x + boundingBox.width / 2;
-                const y = boundingBox.y + boundingBox.height / 2;
-                // Use the humanLikeMouseMove function from stealth-actions.ts
-                await (0, stealth_actions_1.humanLikeMouseMove)(page, x, y);
-                // Click after movement
-                await page.mouse.click(x, y);
-                return {
-                    content: [
-                        {
-                            type: 'text',
-                            text: `Human-like click on element: ${args.selector}`,
-                        },
-                    ],
-                };
-            }, 'Failed to perform human-like click');
         case 'solve_captcha':
             return await withErrorHandling(async () => {
                 await initializeBrowser();
@@ -745,20 +729,6 @@ server.setRequestHandler(types_js_1.CallToolRequestSchema, async (request) => {
                     ],
                 };
             }, 'Failed to solve captcha');
-        case 'human_like_type':
-            return await withErrorHandling(async () => {
-                const { page } = await initializeBrowser();
-                // Use the humanLikeTyping function from stealth-actions.ts
-                await (0, stealth_actions_1.humanLikeTyping)(page, args.selector, args.text);
-                return {
-                    content: [
-                        {
-                            type: 'text',
-                            text: `Typed text with human-like timing into: ${args.selector}`,
-                        },
-                    ],
-                };
-            }, 'Failed to perform human-like typing');
         case 'random_scroll':
             return await withErrorHandling(async () => {
                 const { page } = await initializeBrowser();
