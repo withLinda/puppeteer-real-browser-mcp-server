@@ -1,0 +1,9 @@
+{
+  "mcpServers": {
+    "puppeteer-real-browser": {
+      "command": "node",
+      "args": ["dist/index.js"],
+      "env": {}
+    }
+  }
+}

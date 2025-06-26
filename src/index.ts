@@ -4,6 +4,8 @@ import { StdioServerTransport } from '@modelContextProtocol/sdk/server/stdio.js'
 import {
   CallToolRequestSchema,
   ListToolsRequestSchema,
+  ListResourcesRequestSchema,
+  ListPromptsRequestSchema,
 } from '@modelContextProtocol/sdk/types.js';
 import { connect } from 'puppeteer-real-browser';
 import { humanLikeMouseMove, humanLikeTyping, randomScroll } from './stealth-actions';
@@ -23,6 +25,8 @@ const server = new Server(
   {
     capabilities: {
       tools: {},
+      resources: {},
+      prompts: {},
     },
   }
 );
@@ -37,6 +41,118 @@ async function withErrorHandling<T>(
   } catch (error) {
     console.error(`${errorMessage}:`, error);
     throw new Error(`${errorMessage}: ${error instanceof Error ? error.message : String(error)}`);
+  }
+}
+
+// Specific error types for better handling
+enum BrowserErrorType {
+  FRAME_DETACHED = 'FRAME_DETACHED',
+  SESSION_CLOSED = 'SESSION_CLOSED',
+  TARGET_CLOSED = 'TARGET_CLOSED',
+  PROTOCOL_ERROR = 'PROTOCOL_ERROR',
+  NAVIGATION_TIMEOUT = 'NAVIGATION_TIMEOUT',
+  ELEMENT_NOT_FOUND = 'ELEMENT_NOT_FOUND',
+  UNKNOWN = 'UNKNOWN'
+}
+
+function categorizeError(error: Error): BrowserErrorType {
+  const message = error.message.toLowerCase();
+  
+  if (message.includes('navigating frame was detached')) {
+    return BrowserErrorType.FRAME_DETACHED;
+  }
+  if (message.includes('session closed')) {
+    return BrowserErrorType.SESSION_CLOSED;
+  }
+  if (message.includes('target closed')) {
+    return BrowserErrorType.TARGET_CLOSED;
+  }
+  if (message.includes('protocol error')) {
+    return BrowserErrorType.PROTOCOL_ERROR;
+  }
+  if (message.includes('navigation timeout') || message.includes('timeout')) {
+    return BrowserErrorType.NAVIGATION_TIMEOUT;
+  }
+  if (message.includes('element not found') || message.includes('no node found')) {
+    return BrowserErrorType.ELEMENT_NOT_FOUND;
+  }
+  
+  return BrowserErrorType.UNKNOWN;
+}
+
+// Retry wrapper for operations that may fail due to browser issues
+async function withRetry<T>(
+  operation: () => Promise<T>,
+  maxRetries: number = 3,
+  delay: number = 1000
+): Promise<T> {
+  let lastError: Error;
+  
+  for (let attempt = 1; attempt <= maxRetries; attempt++) {
+    try {
+      return await operation();
+    } catch (error) {
+      lastError = error instanceof Error ? error : new Error(String(error));
+      const errorType = categorizeError(lastError);
+      
+      console.error(`Attempt ${attempt}/${maxRetries} failed (${errorType}):`, lastError.message);
+      
+      // Check if this is a recoverable error
+      const recoverableErrors = [
+        BrowserErrorType.FRAME_DETACHED,
+        BrowserErrorType.SESSION_CLOSED,
+        BrowserErrorType.TARGET_CLOSED,
+        BrowserErrorType.PROTOCOL_ERROR,
+        BrowserErrorType.NAVIGATION_TIMEOUT
+      ];
+      
+      const isRecoverable = recoverableErrors.includes(errorType);
+      
+      if (!isRecoverable || attempt === maxRetries) {
+        // For element not found errors, provide helpful message
+        if (errorType === BrowserErrorType.ELEMENT_NOT_FOUND) {
+          throw new Error(`Element not found after ${maxRetries} attempts. Please verify the selector is correct and the element exists on the page.`);
+        }
+        break;
+      }
+      
+      // Wait before retry with exponential backoff
+      const waitTime = delay * Math.pow(2, attempt - 1); // Exponential backoff
+      await new Promise(resolve => setTimeout(resolve, waitTime));
+      
+      // Browser recovery for session-related errors
+      if ([BrowserErrorType.SESSION_CLOSED, BrowserErrorType.TARGET_CLOSED, BrowserErrorType.FRAME_DETACHED].includes(errorType)) {
+        console.error('Attempting browser recovery...');
+        try {
+          await closeBrowser();
+          await new Promise(resolve => setTimeout(resolve, 2000)); // Wait 2s before reinit
+        } catch (e) {
+          console.error('Error during browser cleanup:', e);
+        }
+      }
+    }
+  }
+  
+  throw lastError!;
+}
+
+// Session validation utility
+async function validateSession(): Promise<boolean> {
+  if (!browserInstance || !pageInstance) {
+    return false;
+  }
+  
+  try {
+    // Test if browser is still connected
+    await browserInstance.version();
+    
+    // Test if page is still active
+    await pageInstance.evaluate(() => true);
+    
+    return true;
+  } catch (error) {
+    console.error('Session validation failed:', error);
+    return false;
   }
 }
 
@@ -72,14 +188,14 @@ function detectChromePath(): string | null {
       ];
       break;
     default:
-      console.warn(`Platform ${platform} not explicitly supported for Chrome path detection`);
+      console.error(`Platform ${platform} not explicitly supported for Chrome path detection`);
       return null;
   }
   
   for (const chromePath of possiblePaths) {
     try {
       if (fs.existsSync(chromePath)) {
-        console.log(`Found Chrome at: ${chromePath}`);
+        console.error(`Found Chrome at: ${chromePath}`);
         return chromePath;
       }
     } catch (error) {
@@ -87,14 +203,21 @@ function detectChromePath(): string | null {
     }
   }
   
-  console.warn(`Chrome not found at any expected paths for platform: ${platform}`);
+  console.error(`Chrome not found at any expected paths for platform: ${platform}`);
   return null;
 }
 
 // Browser lifecycle management
 async function initializeBrowser(options?: any) {
-  if (browserInstance) {
-    return { browser: browserInstance, page: pageInstance };
+  // Check if existing instances are still valid
+  if (browserInstance && pageInstance) {
+    const isValid = await validateSession();
+    if (isValid) {
+      return { browser: browserInstance, page: pageInstance };
+    } else {
+      console.error('Existing session is invalid, reinitializing browser...');
+      await closeBrowser();
+    }
   }
 
   // Detect Chrome path for cross-platform support
@@ -141,9 +264,14 @@ async function initializeBrowser(options?: any) {
 
 async function closeBrowser() {
   if (browserInstance) {
-    await browserInstance.close();
-    browserInstance = null;
-    pageInstance = null;
+    try {
+      await browserInstance.close();
+    } catch (error) {
+      console.error('Error closing browser:', error);
+    } finally {
+      browserInstance = null;
+      pageInstance = null;
+    }
   }
 }
 
@@ -393,6 +521,16 @@ server.setRequestHandler(ListToolsRequestSchema, async () => ({
   tools: TOOLS,
 }));
 
+// Register resource handlers
+server.setRequestHandler(ListResourcesRequestSchema, async () => ({
+  resources: [],
+}));
+
+// Register prompts handlers
+server.setRequestHandler(ListPromptsRequestSchema, async () => ({
+  prompts: [],
+}));
+
 server.setRequestHandler(CallToolRequestSchema, async (request) => {
   const { name, arguments: args } = request.params;
 
@@ -417,34 +555,49 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
 
     case 'navigate':
       return await withErrorHandling(async () => {
-        const { page } = await initializeBrowser();
-        await page.goto((args as any).url, {
-          waitUntil: (args as any).waitUntil || 'networkidle2',
-          timeout: 60000,
+        return await withRetry(async () => {
+          const { page } = await initializeBrowser();
+          await page.goto((args as any).url, {
+            waitUntil: (args as any).waitUntil || 'networkidle2',
+            timeout: 60000,
+          });
+          return {
+            content: [
+              {
+                type: 'text',
+                text: `Navigated to ${(args as any).url}`,
+              },
+            ],
+          };
         });
-        return {
-          content: [
-            {
-              type: 'text',
-              text: `Navigated to ${(args as any).url}`,
-            },
-          ],
-        };
       }, 'Failed to navigate');
 
     case 'screenshot':
       return await withErrorHandling(async () => {
-        const { page } = await initializeBrowser();
+        return await withRetry(async () => {
+          const { page } = await initializeBrowser();
 
-        let screenshotOptions: any = {
-          fullPage: (args as any).fullPage || false,
-          encoding: 'base64',
-        };
+          let screenshotOptions: any = {
+            fullPage: (args as any).fullPage || false,
+            encoding: 'base64',
+          };
 
-        if ((args as any).selector) {
-          const element = await page.$((args as any).selector);
-          if (!element) throw new Error(`Element not found: ${(args as any).selector}`);
-          const screenshot = await element.screenshot({ encoding: 'base64' });
+          if ((args as any).selector) {
+            const element = await page.$((args as any).selector);
+            if (!element) throw new Error(`Element not found: ${(args as any).selector}`);
+            const screenshot = await element.screenshot({ encoding: 'base64' });
+            return {
+              content: [
+                {
+                  type: 'image',
+                  data: screenshot,
+                  mimeType: 'image/png',
+                },
+              ],
+            };
+          }
+
+          const screenshot = await page.screenshot(screenshotOptions);
           return {
             content: [
               {
@@ -454,18 +607,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
               },
             ],
           };
-        }
-
-        const screenshot = await page.screenshot(screenshotOptions);
-        return {
-          content: [
-            {
-              type: 'image',
-              data: screenshot,
-              mimeType: 'image/png',
-            },
-          ],
-        };
+        });
       }, 'Failed to take screenshot');
 
     case 'get_content':

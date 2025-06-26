@@ -16,7 +16,11 @@
   "devDependencies": {
     "typescript": "^5.5.3",
     "@types/node": "latest",
-    "tsx": "latest"
+    "tsx": "latest",
+    "jest": "^29.7.0",
+    "ts-jest": "^29.1.1",
+    "@types/jest": "^29.5.5",
+    "@jest/globals": "^29.7.0"
   },
   "keywords": [
     "mcp",
@@ -27,14 +31,14 @@
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "https://github.com/withLinda/puppeteer-real-browser-mcp-server.git"
+    "url": "git+https://github.com/withLinda/puppeteer-real-browser-mcp-server.git"
   },
   "homepage": "https://github.com/withLinda/puppeteer-real-browser-mcp-server",
   "bugs": {
     "url": "https://github.com/withLinda/puppeteer-real-browser-mcp-server/issues"
   },
   "bin": {
-    "puppeteer-real-browser-mcp-server": "./dist/index.js"
+    "puppeteer-real-browser-mcp-server": "dist/index.js"
   },
   "files": [
     "dist/**/*",
