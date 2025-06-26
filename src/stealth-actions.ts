@@ -1,3 +1,5 @@
+import { setTimeout as sleep } from 'node:timers/promises';
+
 export async function humanLikeMouseMove(page: any, x: number, y: number) {
   const steps = 20;
   const currentPosition = await page.evaluate(() => {
@@ -16,7 +18,7 @@ export async function humanLikeMouseMove(page: any, x: number, y: number) {
     const currentY = currentPosition.y + (y - currentPosition.y) * easeProgress;
     
     await page.mouse.move(currentX, currentY);
-    await page.waitForTimeout(Math.random() * 10 + 5);
+    await sleep(Math.random() * 10 + 5);
   }
 }
 
@@ -26,7 +28,7 @@ export async function humanLikeTyping(page: any, selector: string, text: string)
   for (const char of text) {
     await page.keyboard.type(char);
     // Variable delay between 50-200ms
-    await page.waitForTimeout(Math.random() * 150 + 50);
+    await sleep(Math.random() * 150 + 50);
   }
 }
 
@@ -38,6 +40,6 @@ export async function randomScroll(page: any) {
     await page.evaluate((d: number) => {
       (window as any).scrollBy({ top: d, behavior: 'smooth' });
     }, distance);
-    await page.waitForTimeout(Math.random() * 2000 + 1000);
+    await sleep(Math.random() * 2000 + 1000);
   }
 }

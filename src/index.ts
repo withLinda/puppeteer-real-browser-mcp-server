@@ -9,6 +9,7 @@ import {
 } from '@modelContextProtocol/sdk/types.js';
 import { connect } from 'puppeteer-real-browser';
 import { humanLikeMouseMove, humanLikeTyping, randomScroll } from './stealth-actions';
+import { setTimeout as sleep } from 'node:timers/promises';
 import * as fs from 'fs';
 import * as path from 'path';
 
@@ -224,26 +225,35 @@ async function initializeBrowser(options?: any) {
   const detectedChromePath = detectChromePath();
   const customConfig = options?.customConfig ?? {};
   
+  // Configure chrome-launcher options to disable default flags
+  const chromeConfig = {
+    ignoreDefaultFlags: true,
+    chromeFlags: [
+      '--start-maximized',
+      '--disable-blink-features=AutomationControlled'
+    ],
+    ...customConfig
+  };
+  
   // Add detected Chrome path if found and not already specified
-  if (detectedChromePath && !customConfig.chromePath) {
-    customConfig.chromePath = detectedChromePath;
+  if (detectedChromePath && !chromeConfig.chromePath) {
+    chromeConfig.chromePath = detectedChromePath;
   }
 
   const connectOptions: any = {
     headless: options?.headless ?? false,
-    args: options?.ignoreAllFlags ? [] : ['--no-sandbox', '--disable-setuid-sandbox'],
-    customConfig,
+    customConfig: chromeConfig,
     turnstile: true,
-    ...(options?.connectOption ?? {}),
+    disableXvfb: options?.disableXvfb ?? true,
+    connectOption: {
+      defaultViewport: null,
+      ...(options?.connectOption ?? {}),
+    },
   };
 
-  if (options?.disableXvfb !== undefined) {
-    connectOptions.disableXvfb = options.disableXvfb;
-  }
 
   if (options?.proxy) {
-    connectOptions.args = connectOptions.args || [];
-    connectOptions.args.push(`--proxy-server=${options.proxy}`);
+    connectOptions.customConfig.chromeFlags.push(`--proxy-server=${options.proxy}`);
   }
 
   if (options?.plugins && Array.isArray(options.plugins)) {
@@ -256,8 +266,7 @@ async function initializeBrowser(options?: any) {
   browserInstance = browser;
   pageInstance = page;
 
-  // Set up default page settings
-  await page.setViewport({ width: 1920, height: 1080 });
+  // Viewport is now set to null for maximized window behavior
 
   return { browser, page };
 }
@@ -698,7 +707,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
             await page.waitForNavigation({ waitUntil: 'networkidle2', timeout: (args as any).timeout || 30000 });
             break;
           case 'timeout':
-            await page.waitForTimeout(parseInt((args as any).value as string));
+            await sleep(parseInt((args as any).value as string));
             break;
         }
 

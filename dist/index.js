@@ -39,6 +39,7 @@ const stdio_js_1 = require("@modelContextProtocol/sdk/server/stdio.js");
 const types_js_1 = require("@modelContextProtocol/sdk/types.js");
 const puppeteer_real_browser_1 = require("puppeteer-real-browser");
 const stealth_actions_1 = require("./stealth-actions");
+const promises_1 = require("node:timers/promises");
 const fs = __importStar(require("fs"));
 const path = __importStar(require("path"));
 // Store browser instance
@@ -223,23 +224,31 @@ async function initializeBrowser(options) {
     // Detect Chrome path for cross-platform support
     const detectedChromePath = detectChromePath();
     const customConfig = options?.customConfig ?? {};
+    // Configure chrome-launcher options to disable default flags
+    const chromeConfig = {
+        ignoreDefaultFlags: true,
+        chromeFlags: [
+            '--start-maximized',
+            '--disable-blink-features=AutomationControlled'
+        ],
+        ...customConfig
+    };
     // Add detected Chrome path if found and not already specified
-    if (detectedChromePath && !customConfig.chromePath) {
-        customConfig.chromePath = detectedChromePath;
+    if (detectedChromePath && !chromeConfig.chromePath) {
+        chromeConfig.chromePath = detectedChromePath;
     }
     const connectOptions = {
         headless: options?.headless ?? false,
-        args: options?.ignoreAllFlags ? [] : ['--no-sandbox', '--disable-setuid-sandbox'],
-        customConfig,
+        customConfig: chromeConfig,
         turnstile: true,
-        ...(options?.connectOption ?? {}),
+        disableXvfb: options?.disableXvfb ?? true,
+        connectOption: {
+            defaultViewport: null,
+            ...(options?.connectOption ?? {}),
+        },
     };
-    if (options?.disableXvfb !== undefined) {
-        connectOptions.disableXvfb = options.disableXvfb;
-    }
     if (options?.proxy) {
-        connectOptions.args = connectOptions.args || [];
-        connectOptions.args.push(`--proxy-server=${options.proxy}`);
+        connectOptions.customConfig.chromeFlags.push(`--proxy-server=${options.proxy}`);
     }
     if (options?.plugins && Array.isArray(options.plugins)) {
         connectOptions.plugins = options.plugins;
@@ -248,8 +257,7 @@ async function initializeBrowser(options) {
     const { browser, page } = result;
     browserInstance = browser;
     pageInstance = page;
-    // Set up default page settings
-    await page.setViewport({ width: 1920, height: 1080 });
+    // Viewport is now set to null for maximized window behavior
     return { browser, page };
 }
 async function closeBrowser() {
@@ -670,7 +678,7 @@ server.setRequestHandler(types_js_1.CallToolRequestSchema, async (request) => {
                         await page.waitForNavigation({ waitUntil: 'networkidle2', timeout: args.timeout || 30000 });
                         break;
                     case 'timeout':
-                        await page.waitForTimeout(parseInt(args.value));
+                        await (0, promises_1.setTimeout)(parseInt(args.value));
                         break;
                 }
                 return {

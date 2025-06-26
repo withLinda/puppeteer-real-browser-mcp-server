@@ -3,6 +3,7 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.humanLikeMouseMove = humanLikeMouseMove;
 exports.humanLikeTyping = humanLikeTyping;
 exports.randomScroll = randomScroll;
+const promises_1 = require("node:timers/promises");
 async function humanLikeMouseMove(page, x, y) {
     const steps = 20;
     const currentPosition = await page.evaluate(() => {
@@ -18,7 +19,7 @@ async function humanLikeMouseMove(page, x, y) {
         const currentX = currentPosition.x + (x - currentPosition.x) * easeProgress;
         const currentY = currentPosition.y + (y - currentPosition.y) * easeProgress;
         await page.mouse.move(currentX, currentY);
-        await page.waitForTimeout(Math.random() * 10 + 5);
+        await (0, promises_1.setTimeout)(Math.random() * 10 + 5);
     }
 }
 async function humanLikeTyping(page, selector, text) {
@@ -26,7 +27,7 @@ async function humanLikeTyping(page, selector, text) {
     for (const char of text) {
         await page.keyboard.type(char);
         // Variable delay between 50-200ms
-        await page.waitForTimeout(Math.random() * 150 + 50);
+        await (0, promises_1.setTimeout)(Math.random() * 150 + 50);
     }
 }
 async function randomScroll(page) {
@@ -36,6 +37,6 @@ async function randomScroll(page) {
         await page.evaluate((d) => {
             window.scrollBy({ top: d, behavior: 'smooth' });
         }, distance);
-        await page.waitForTimeout(Math.random() * 2000 + 1000);
+        await (0, promises_1.setTimeout)(Math.random() * 2000 + 1000);
     }
 }
