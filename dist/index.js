@@ -224,10 +224,13 @@ async function initializeBrowser(options) {
     // Detect Chrome path for cross-platform support
     const detectedChromePath = detectChromePath();
     const customConfig = options?.customConfig ?? {};
-    // Configure chrome-launcher options to disable default flags
+    // Configure chrome-launcher options to prevent double browser launch
     const chromeConfig = {
-        ignoreDefaultFlags: true,
+        ignoreDefaultFlags: false,
         chromeFlags: [
+            '--no-first-run',
+            '--no-default-browser-check',
+            '--disable-default-apps',
             '--start-maximized',
             '--disable-blink-features=AutomationControlled'
         ],
