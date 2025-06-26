@@ -42,7 +42,7 @@ Check if the puppeteer-real-browser MCP server is properly configured and recogn
 
 **Expected Results:**
 - [ ] Server shows as "connected" or "active"
-- [ ] 12 tools are listed (browser_init, navigate, screenshot, get_content, click, type, wait, browser_close, human_like_click, solve_captcha, human_like_type, random_scroll)
+- [ ] 10 tools are listed (browser_init, navigate, screenshot, get_content, click, type, wait, browser_close, solve_captcha, random_scroll)
 - [ ] No connection errors or warnings
 
 ### 1.2 Tool Availability Verification
@@ -52,7 +52,7 @@ List all available tools from the puppeteer-real-browser MCP server and describe
 ```
 
 **Expected Results:**
-- [ ] All 12 tools present with descriptions
+- [ ] All 10 tools present with descriptions
 - [ ] Tool schemas include required parameters
 - [ ] No "Method not found" errors
 
@@ -146,24 +146,20 @@ Monitor for any retry attempts or error recovery.
 
 ## Phase 4: Advanced Features Testing
 
-### 4.1 Human-Like Actions Test
+### 4.1 Random Scroll Test
 **Prompt for Claude Code CLI:**
 ```
-Test the human-like stealth features:
+Test the random scroll stealth feature:
 1. Initialize browser (non-headless)
 2. Navigate to https://example.com
-3. Use human_like_click on a link or element
-4. Use human_like_type to enter text in a form field
-5. Use random_scroll to simulate natural scrolling
-6. Take a screenshot to verify actions
-7. Close browser
+3. Use random_scroll to simulate natural scrolling
+4. Take a screenshot to verify actions
+5. Close browser
 ```
 
 **Expected Results:**
-- [ ] Human-like actions execute with timing variations
+- [ ] Random scroll executes with timing variations
 - [ ] No bot detection triggers
-- [ ] Mouse movements are smooth and natural
-- [ ] Typing has realistic delays
 - [ ] Scrolling appears natural
 
 ### 4.2 Error Handling Categories Test
@@ -347,8 +343,8 @@ Monitor for retry attempts and recovery mechanisms.
 PHASE 4 - Advanced Features:
 1. Initialize browser
 2. Navigate to https://httpbin.org/forms/post
-3. Use human_like_type to fill in a form field
-4. Use human_like_click to click elements
+3. Use type to fill in a form field
+4. Use click to click elements
 5. Use random_scroll to simulate natural behavior
 6. Take final screenshot
 7. Close browser

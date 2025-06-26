@@ -111,8 +111,8 @@ screenshots, extract content, and more.
 - **Stealth by default**: All browser instances use anti-detection features
 - **Enhanced page methods**: Support for `page.realClick` and `page.realCursor`
 - **Advanced configuration**: Full support for all puppeteer-real-browser options
-- **Human-like actions**: Tools for natural interactions to avoid detection
-- **Comprehensive toolset**: 16+ tools covering all browser automation needs
+- **Random scrolling**: Tools for natural scrolling to avoid detection
+- **Comprehensive toolset**: 10+ tools covering all browser automation needs
 - **Proxy support**: Built-in proxy configuration for enhanced privacy
 - **Captcha handling**: Support for solving reCAPTCHA, hCaptcha, and Turnstile
 - **Target management**: Support for `setTarget` function
@@ -211,12 +211,12 @@ AI: I'll capture a screenshot of the page.
 #### Form Automation
 ```text
 User: "Fill in the search form with 'test query'"
-AI: I'll type that into the search field using human-like typing.
-[Uses human_like_type tool with selector and text]
+AI: I'll type that into the search field.
+[Uses type tool with selector and text]
 
 User: "Click the search button"
-AI: I'll click the search button with human-like movement.
-[Uses human_like_click tool]
+AI: I'll click the search button.
+[Uses click tool]
 ```
 
 #### Data Extraction
@@ -280,8 +280,6 @@ AI: I'll set up the browser with your proxy configuration.
 
 | Tool Name | Description | Required Parameters | Optional Parameters |
 |-----------|-------------|---------------------|-------------------|
-| `human_like_click` | Click with human-like mouse movement | `selector` | None |
-| `human_like_type` | Type text with human-like timing | `selector`, `text` | None |
 | `random_scroll` | Perform random scrolling with natural timing | None | None |
 
 ### Anti-Detection Tools
@@ -294,13 +292,11 @@ AI: I'll set up the browser with your proxy configuration.
 
 ### Human-like Interactions
 
-The server includes several tools designed to mimic human behavior:
+The server includes tools designed to mimic human behavior:
 
-- **Human-like mouse movement**: Moves the cursor in a natural, non-linear path
-- **Variable typing speed**: Types with random delays between keystrokes
 - **Random scrolling**: Performs scrolling with natural timing and variable distances
 
-These features help avoid detection by sophisticated bot-detection systems
+This feature helps avoid detection by sophisticated bot-detection systems
 that analyze user behavior patterns.
 
 ### Captcha Handling
@@ -481,7 +477,6 @@ For advanced users, you can modify the server behavior by editing the source cod
 
 5. **Detection issues**
    - Use `real_click` and `real_cursor` instead of basic click
-   - Enable human-like tools: `human_like_click`, `human_like_type`
    - Add random delays with `random_scroll`
    - Use proxy if needed: `proxy: "http://proxy.example.com:8080"`
 
