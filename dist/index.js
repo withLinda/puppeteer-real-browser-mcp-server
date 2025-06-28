@@ -485,6 +485,19 @@ const TOOLS = [
         },
     },
 ];
+// Register initialize handler
+server.setRequestHandler(types_js_1.InitializeRequestSchema, async (request) => ({
+    protocolVersion: '2024-11-05',
+    capabilities: {
+        tools: {},
+        resources: {},
+        prompts: {},
+    },
+    serverInfo: {
+        name: 'puppeteer-real-browser-mcp-server',
+        version: '1.0.13',
+    },
+}));
 // Register tool handlers
 server.setRequestHandler(types_js_1.ListToolsRequestSchema, async () => ({
     tools: TOOLS,

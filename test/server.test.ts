@@ -29,20 +29,21 @@ describe('MCP Server Integration Tests', () => {
     test('should start without errors', (done) => {
       let hasStarted = false;
       
-      serverProcess.stderr?.on('data', (data) => {
-        const output = data.toString();
-        if (output.includes('MCP Server for puppeteer-real-browser started')) {
-          hasStarted = true;
-          expect(hasStarted).toBe(true);
-          done();
-        }
-      });
-
-      setTimeout(() => {
+      const timeout = setTimeout(() => {
         if (!hasStarted) {
           done(new Error('Server did not start within timeout'));
         }
       }, 5000);
+
+      serverProcess.stderr?.on('data', (data) => {
+        const output = data.toString();
+        if (output.includes('MCP Server for puppeteer-real-browser started')) {
+          hasStarted = true;
+          clearTimeout(timeout);
+          expect(hasStarted).toBe(true);
+          done();
+        }
+      });
     });
 
     test('should not pollute stdout with non-JSON content', (done) => {
@@ -80,6 +81,12 @@ describe('MCP Server Integration Tests', () => {
 
       let responseReceived = false;
 
+      const timeout = setTimeout(() => {
+        if (!responseReceived) {
+          done(new Error('No valid response received for tools/list'));
+        }
+      }, 10000);
+
       serverProcess.stdout?.on('data', (data) => {
         const lines = data.toString().split('\n').filter((line: string) => line.trim());
         
@@ -91,6 +98,7 @@ describe('MCP Server Integration Tests', () => {
               expect(Array.isArray(response.result.tools)).toBe(true);
               expect(response.result.tools.length).toBeGreaterThan(0);
               responseReceived = true;
+              clearTimeout(timeout);
               done();
             }
           } catch (e) {
@@ -104,12 +112,6 @@ describe('MCP Server Integration Tests', () => {
           serverProcess.stdin?.write(message);
         }
       });
-
-      setTimeout(() => {
-        if (!responseReceived) {
-          done(new Error('No valid response received for tools/list'));
-        }
-      }, 10000);
     });
 
     test('resources/list should return empty array (no Method not found)', (done) => {
@@ -121,6 +123,12 @@ describe('MCP Server Integration Tests', () => {
       }) + '\n';
 
       let responseReceived = false;
+
+      const timeout = setTimeout(() => {
+        if (!responseReceived) {
+          done(new Error('No valid response received for resources/list'));
+        }
+      }, 10000);
 
       serverProcess.stdout?.on('data', (data) => {
         const lines = data.toString().split('\n').filter((line: string) => line.trim());
@@ -134,6 +142,7 @@ describe('MCP Server Integration Tests', () => {
               expect(response.result.resources).toBeDefined();
               expect(Array.isArray(response.result.resources)).toBe(true);
               responseReceived = true;
+              clearTimeout(timeout);
               done();
             }
           } catch (e) {
@@ -147,12 +156,6 @@ describe('MCP Server Integration Tests', () => {
           serverProcess.stdin?.write(message);
         }
       });
-
-      setTimeout(() => {
-        if (!responseReceived) {
-          done(new Error('No valid response received for resources/list'));
-        }
-      }, 10000);
     });
 
     test('prompts/list should return empty array (no Method not found)', (done) => {
@@ -164,6 +167,12 @@ describe('MCP Server Integration Tests', () => {
       }) + '\n';
 
       let responseReceived = false;
+
+      const timeout = setTimeout(() => {
+        if (!responseReceived) {
+          done(new Error('No valid response received for prompts/list'));
+        }
+      }, 10000);
 
       serverProcess.stdout?.on('data', (data) => {
         const lines = data.toString().split('\n').filter((line: string) => line.trim());
@@ -177,6 +186,7 @@ describe('MCP Server Integration Tests', () => {
               expect(response.result.prompts).toBeDefined();
               expect(Array.isArray(response.result.prompts)).toBe(true);
               responseReceived = true;
+              clearTimeout(timeout);
               done();
             }
           } catch (e) {
@@ -190,12 +200,6 @@ describe('MCP Server Integration Tests', () => {
           serverProcess.stdin?.write(message);
         }
       });
-
-      setTimeout(() => {
-        if (!responseReceived) {
-          done(new Error('No valid response received for prompts/list'));
-        }
-      }, 10000);
     });
   });
 
@@ -253,6 +257,14 @@ describe('MCP Server Integration Tests', () => {
         params: {}
       }) + '\n';
 
+      let responseReceived = false;
+
+      const timeout = setTimeout(() => {
+        if (!responseReceived) {
+          done(new Error('Could not verify tool count'));
+        }
+      }, 10000);
+
       serverProcess.stdout?.on('data', (data) => {
         const lines = data.toString().split('\n').filter((line: string) => line.trim());
         
@@ -264,6 +276,8 @@ describe('MCP Server Integration Tests', () => {
               
               expect(tools).toHaveLength(10);
               expect(tools.map((t: any) => t.name).sort()).toEqual(expectedTools.sort());
+              responseReceived = true;
+              clearTimeout(timeout);
               done();
             }
           } catch (e) {
@@ -277,10 +291,6 @@ describe('MCP Server Integration Tests', () => {
           serverProcess.stdin?.write(toolsMessage);
         }
       });
-
-      setTimeout(() => {
-        done(new Error('Could not verify tool count'));
-      }, 10000);
     });
 
     test('all tools should have valid schemas and descriptions', (done) => {
@@ -290,6 +300,14 @@ describe('MCP Server Integration Tests', () => {
         method: 'tools/list',
         params: {}
       }) + '\n';
+
+      let responseReceived = false;
+
+      const timeout = setTimeout(() => {
+        if (!responseReceived) {
+          done(new Error('Could not verify tool schemas'));
+        }
+      }, 10000);
 
       serverProcess.stdout?.on('data', (data) => {
         const lines = data.toString().split('\n').filter((line: string) => line.trim());
@@ -307,6 +325,8 @@ describe('MCP Server Integration Tests', () => {
                 expect(typeof tool.inputSchema).toBe('object');
               });
               
+              responseReceived = true;
+              clearTimeout(timeout);
               done();
             }
           } catch (e) {
@@ -320,10 +340,6 @@ describe('MCP Server Integration Tests', () => {
           serverProcess.stdin?.write(toolsMessage);
         }
       });
-
-      setTimeout(() => {
-        done(new Error('Could not verify tool schemas'));
-      }, 10000);
     });
 
     test('browser_init tool should have correct schema', (done) => {
@@ -333,6 +349,14 @@ describe('MCP Server Integration Tests', () => {
         method: 'tools/list',
         params: {}
       }) + '\n';
+
+      let responseReceived = false;
+
+      const timeout = setTimeout(() => {
+        if (!responseReceived) {
+          done(new Error('Could not verify browser_init tool'));
+        }
+      }, 10000);
 
       serverProcess.stdout?.on('data', (data) => {
         const lines = data.toString().split('\n').filter((line: string) => line.trim());
@@ -348,6 +372,8 @@ describe('MCP Server Integration Tests', () => {
               expect(browserInitTool.description).toContain('anti-detection');
               expect(browserInitTool.inputSchema.properties.headless).toBeDefined();
               expect(browserInitTool.inputSchema.properties.proxy).toBeDefined();
+              responseReceived = true;
+              clearTimeout(timeout);
               done();
             }
           } catch (e) {
@@ -361,10 +387,6 @@ describe('MCP Server Integration Tests', () => {
           serverProcess.stdin?.write(toolsMessage);
         }
       });
-
-      setTimeout(() => {
-        done(new Error('Could not verify browser_init tool'));
-      }, 10000);
     });
   });
 });

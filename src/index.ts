@@ -6,6 +6,7 @@ import {
   ListToolsRequestSchema,
   ListResourcesRequestSchema,
   ListPromptsRequestSchema,
+  InitializeRequestSchema,
 } from '@modelContextProtocol/sdk/types.js';
 import { connect } from 'puppeteer-real-browser';
 import { randomScroll } from './stealth-actions';
@@ -495,6 +496,20 @@ const TOOLS = [
     },
   },
 ];
+
+// Register initialize handler
+server.setRequestHandler(InitializeRequestSchema, async (request) => ({
+  protocolVersion: '2024-11-05',
+  capabilities: {
+    tools: {},
+    resources: {},
+    prompts: {},
+  },
+  serverInfo: {
+    name: 'puppeteer-real-browser-mcp-server',
+    version: '1.0.13',
+  },
+}));
 
 // Register tool handlers
 server.setRequestHandler(ListToolsRequestSchema, async () => ({
