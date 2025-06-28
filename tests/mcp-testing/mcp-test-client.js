@@ -61,7 +61,7 @@ class MCPTestClient {
     this.buffer += chunk;
     
     // Process complete JSON-RPC messages
-    const lines = this.buffer.split('\\n');
+    const lines = this.buffer.split('\n');
     this.buffer = lines.pop() || '';
     
     for (const line of lines) {
@@ -124,7 +124,7 @@ class MCPTestClient {
       }, 30000);
 
       try {
-        this.process.stdin.write(JSON.stringify(request) + '\\n');
+        this.process.stdin.write(JSON.stringify(request) + '\n');
         this.logger.log(`Sent request: ${method} with id ${id}`, 'DEBUG');
       } catch (error) {
         clearTimeout(timeout);

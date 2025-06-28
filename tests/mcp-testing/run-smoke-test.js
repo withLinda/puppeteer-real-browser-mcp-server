@@ -41,7 +41,7 @@ async function runSmokeTest() {
     logger.log('Initializing browser (headless)...', 'INFO');
     const browserResult = await client.callTool('browser_init', { headless: true });
     
-    if (!browserResult?.success) {
+    if (!browserResult?.content || browserResult.content.length === 0) {
       throw new Error('Failed to initialize browser');
     }
     browserInitialized = true;
@@ -54,7 +54,7 @@ async function runSmokeTest() {
       waitUntil: 'networkidle2'
     });
     
-    if (!navResult?.success) {
+    if (!navResult?.content || navResult.content.length === 0) {
       throw new Error('Failed to navigate');
     }
     logger.log('✅ Navigation successful', 'SUCCESS');
@@ -63,7 +63,7 @@ async function runSmokeTest() {
     logger.log('Taking screenshot...', 'INFO');
     const screenshotResult = await client.callTool('screenshot', {});
     
-    if (!screenshotResult?.success || !screenshotResult?.screenshot) {
+    if (!screenshotResult?.content || screenshotResult.content.length === 0) {
       throw new Error('Failed to take screenshot');
     }
     logger.log('✅ Screenshot captured', 'SUCCESS');
@@ -72,7 +72,7 @@ async function runSmokeTest() {
     logger.log('Closing browser...', 'INFO');
     const closeResult = await client.callTool('browser_close');
     
-    if (!closeResult?.success) {
+    if (!closeResult?.content || closeResult.content.length === 0) {
       throw new Error('Failed to close browser');
     }
     browserInitialized = false;

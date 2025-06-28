@@ -38,11 +38,10 @@ class Phase2BrowserTests {
       });
       const duration = Date.now() - startTime;
       
-      if (result && result.success) {
+      if (result && result.content && result.content.length > 0) {
         this.logger.logTest('Phase 2', 'Browser Initialization (Headless)', 'passed', {
           duration: `${duration}ms`,
-          message: result.message,
-          chromePath: result.chromePath
+          message: result.content[0].text
         });
       } else {
         this.logger.logTest('Phase 2', 'Browser Initialization (Headless)', 'failed', {
@@ -69,7 +68,7 @@ class Phase2BrowserTests {
         headless: true
       });
       
-      if (!initResult?.success) {
+      if (!initResult?.content || initResult.content.length === 0) {
         throw new Error('Failed to initialize browser');
       }
       browserInitialized = true;
@@ -82,7 +81,7 @@ class Phase2BrowserTests {
       });
       const navDuration = Date.now() - navStartTime;
       
-      if (navResult?.success) {
+      if (navResult?.content && navResult.content.length > 0) {
         this.logger.logTest('Phase 2', 'Navigation to example.com', 'passed', {
           duration: `${navDuration}ms`,
           retries: navResult.retries || 0
@@ -101,7 +100,7 @@ class Phase2BrowserTests {
       });
       const screenshotDuration = Date.now() - screenshotStartTime;
       
-      if (screenshotResult?.success && screenshotResult.screenshot) {
+      if (screenshotResult?.content && screenshotResult.content.length > 0) {
         this.logger.logTest('Phase 2', 'Screenshot Capture', 'passed', {
           duration: `${screenshotDuration}ms`,
           imageSize: screenshotResult.screenshot.length
@@ -117,7 +116,7 @@ class Phase2BrowserTests {
         type: 'text'
       });
       
-      if (contentResult?.success && contentResult.content) {
+      if (contentResult?.content && contentResult.content.length > 0) {
         this.logger.logTest('Phase 2', 'Get Page Content', 'passed', {
           contentLength: contentResult.content.length,
           hasExampleText: contentResult.content.includes('Example Domain')
@@ -137,7 +136,7 @@ class Phase2BrowserTests {
         try {
           const closeResult = await this.client.callTool('browser_close');
           this.logger.logTest('Phase 2', 'Browser Cleanup', 
-                             closeResult?.success ? 'passed' : 'failed', {});
+                             (closeResult?.content && closeResult.content.length > 0) ? 'passed' : 'failed', {});
         } catch (error) {
           this.logger.log(`Failed to close browser: ${error.message}`, 'ERROR');
         }
@@ -156,7 +155,7 @@ class Phase2BrowserTests {
       });
       const duration = Date.now() - startTime;
       
-      if (result && result.success) {
+      if (result && result.content && result.content.length > 0) {
         browserInitialized = true;
         this.logger.logTest('Phase 2', 'Browser Initialization (Non-Headless)', 'passed', {
           duration: `${duration}ms`,
@@ -168,7 +167,7 @@ class Phase2BrowserTests {
           url: 'https://httpbin.org/user-agent'
         });
         
-        if (navResult?.success) {
+        if (navResult?.content && navResult.content.length > 0) {
           this.logger.logTest('Phase 2', 'Non-Headless Navigation', 'passed', {});
         } else {
           this.logger.logTest('Phase 2', 'Non-Headless Navigation', 'failed', {
