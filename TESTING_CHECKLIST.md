@@ -48,7 +48,7 @@ Check if the puppeteer-real-browser MCP server is properly configured and recogn
 ### 1.2 Tool Availability Verification
 **Prompt for Claude Code CLI:**
 ```
-List all available tools from the puppeteer-real-browser MCP server and describe what each tool does. Verify that all 12 expected tools are present and have proper descriptions.
+List all available tools from the puppeteer-real-browser MCP server and describe what each tool does. Verify that all 10 expected tools are present and have proper descriptions.
 ```
 
 **Expected Results:**
@@ -244,7 +244,7 @@ Verify MCP protocol compliance:
 **Expected Results:**
 - [ ] resources/list returns `{"resources": []}`
 - [ ] prompts/list returns `{"prompts": []}`
-- [ ] tools/list returns array of 12 tools
+- [ ] tools/list returns array of 10 tools
 - [ ] All responses are valid JSON-RPC 2.0
 - [ ] No stdout pollution with non-JSON content
 
@@ -451,8 +451,8 @@ npx @modelcontextprotocol/inspector node dist/index.js
 # Run Jest tests
 npm test
 
-# Check Chrome detection
-node test-chrome-detection.js
+# Check environment and Chrome detection
+npm run test:debug
 ```
 
 ---

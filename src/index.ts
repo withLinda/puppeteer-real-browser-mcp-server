@@ -8,7 +8,7 @@ import {
   ListPromptsRequestSchema,
 } from '@modelContextProtocol/sdk/types.js';
 import { connect } from 'puppeteer-real-browser';
-import { humanLikeMouseMove, humanLikeTyping, randomScroll } from './stealth-actions';
+import { randomScroll } from './stealth-actions';
 import { setTimeout as sleep } from 'node:timers/promises';
 import * as fs from 'fs';
 import * as path from 'path';
@@ -58,7 +58,7 @@ enum BrowserErrorType {
 
 function categorizeError(error: Error): BrowserErrorType {
   const message = error.message.toLowerCase();
-  
+
   if (message.includes('navigating frame was detached')) {
     return BrowserErrorType.FRAME_DETACHED;
   }
@@ -77,7 +77,7 @@ function categorizeError(error: Error): BrowserErrorType {
   if (message.includes('element not found') || message.includes('no node found')) {
     return BrowserErrorType.ELEMENT_NOT_FOUND;
   }
-  
+
   return BrowserErrorType.UNKNOWN;
 }
 
@@ -88,16 +88,16 @@ async function withRetry<T>(
   delay: number = 1000
 ): Promise<T> {
   let lastError: Error;
-  
+
   for (let attempt = 1; attempt <= maxRetries; attempt++) {
     try {
       return await operation();
     } catch (error) {
       lastError = error instanceof Error ? error : new Error(String(error));
       const errorType = categorizeError(lastError);
-      
+
       console.error(`Attempt ${attempt}/${maxRetries} failed (${errorType}):`, lastError.message);
-      
+
       // Check if this is a recoverable error
       const recoverableErrors = [
         BrowserErrorType.FRAME_DETACHED,
@@ -106,9 +106,9 @@ async function withRetry<T>(
         BrowserErrorType.PROTOCOL_ERROR,
         BrowserErrorType.NAVIGATION_TIMEOUT
       ];
-      
+
       const isRecoverable = recoverableErrors.includes(errorType);
-      
+
       if (!isRecoverable || attempt === maxRetries) {
         // For element not found errors, provide helpful message
         if (errorType === BrowserErrorType.ELEMENT_NOT_FOUND) {
@@ -116,11 +116,11 @@ async function withRetry<T>(
         }
         break;
       }
-      
+
       // Wait before retry with exponential backoff
       const waitTime = delay * Math.pow(2, attempt - 1); // Exponential backoff
       await new Promise(resolve => setTimeout(resolve, waitTime));
-      
+
       // Browser recovery for session-related errors
       if ([BrowserErrorType.SESSION_CLOSED, BrowserErrorType.TARGET_CLOSED, BrowserErrorType.FRAME_DETACHED].includes(errorType)) {
         console.error('Attempting browser recovery...');
@@ -133,7 +133,7 @@ async function withRetry<T>(
       }
     }
   }
-  
+
   throw lastError!;
 }
 
@@ -142,14 +142,14 @@ async function validateSession(): Promise<boolean> {
   if (!browserInstance || !pageInstance) {
     return false;
   }
-  
+
   try {
     // Test if browser is still connected
     await browserInstance.version();
-    
+
     // Test if page is still active
     await pageInstance.evaluate(() => true);
-    
+
     return true;
   } catch (error) {
     console.error('Session validation failed:', error);
@@ -160,9 +160,9 @@ async function validateSession(): Promise<boolean> {
 // Chrome path detection for cross-platform support
 function detectChromePath(): string | null {
   const platform = process.platform;
-  
+
   let possiblePaths: string[] = [];
-  
+
   switch (platform) {
     case 'win32':
       possiblePaths = [
@@ -192,7 +192,7 @@ function detectChromePath(): string | null {
       console.error(`Platform ${platform} not explicitly supported for Chrome path detection`);
       return null;
   }
-  
+
   for (const chromePath of possiblePaths) {
     try {
       if (fs.existsSync(chromePath)) {
@@ -203,7 +203,7 @@ function detectChromePath(): string | null {
       // Continue to next path
     }
   }
-  
+
   console.error(`Chrome not found at any expected paths for platform: ${platform}`);
   return null;
 }
@@ -224,7 +224,7 @@ async function initializeBrowser(options?: any) {
   // Detect Chrome path for cross-platform support
   const detectedChromePath = detectChromePath();
   const customConfig = options?.customConfig ?? {};
-  
+
   // Configure chrome-launcher options to prevent double browser launch
   const chromeConfig = {
     ignoreDefaultFlags: false,
@@ -237,7 +237,7 @@ async function initializeBrowser(options?: any) {
     ],
     ...customConfig
   };
-  
+
   // Add detected Chrome path if found and not already specified
   if (detectedChromePath && !chromeConfig.chromePath) {
     chromeConfig.chromePath = detectedChromePath;
@@ -624,17 +624,17 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         return await withRetry(async () => {
           const { page } = await initializeBrowser();
           const selector = (args as any).selector;
-          
+
           // Pre-validation: Check if element exists using get_content functionality
           try {
             const element = await page.$(selector);
             if (!element) {
               throw new Error(`Element not found: ${selector}. Please verify the selector is correct and the element exists on the page.`);
             }
-            
+
             // Wait for element to be ready
             await page.waitForSelector(selector, { timeout: 5000 });
-            
+
             // Check element visibility
             const boundingBox = await element.boundingBox();
             if (!boundingBox) {
@@ -644,7 +644,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
             } else {
               // Standard click with options
               const options = (args as any).options || {};
-              
+
               if ((args as any).waitForNavigation) {
                 await Promise.all([
                   page.waitForNavigation({ waitUntil: 'networkidle2' }),
@@ -654,7 +654,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
                 await page.click(selector, options);
               }
             }
-            
+
             return {
               content: [
                 {

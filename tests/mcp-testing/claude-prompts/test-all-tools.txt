@@ -1,0 +1,5 @@
+Using the puppeteer-test-server MCP server, please:
+1. List all available tools with descriptions
+2. Verify all 10 expected tools are present (browser_init, navigate, screenshot, get_content, click, type, wait, browser_close, solve_captcha, random_scroll)
+3. Report any missing tools
+4. Check that each tool has a proper input schema

@@ -21,8 +21,9 @@ puppeteer-real-browser.
 9. [Configuration](#configuration)
 10. [Troubleshooting](#troubleshooting)
 11. [Development](#development)
-12. [Contributing](#contributing)
-13. [License](#license)
+12. [Testing](#testing)
+13. [Contributing](#contributing)
+14. [License](#license)
 
 ## Quick Start for Beginners
 
@@ -103,19 +104,16 @@ and browser automation. It leverages puppeteer-real-browser to provide stealth
 browsing capabilities that can bypass common bot detection mechanisms.
 
 This server implements the Model Context Protocol (MCP), allowing AI
-assistants to control a real browser with human-like interactions, take
-screenshots, extract content, and more.
+assistants to control a real browser, take screenshots, extract content, and more.
 
 ## Features
 
 - **Stealth by default**: All browser instances use anti-detection features
-- **Enhanced page methods**: Support for `page.realClick` and `page.realCursor`
 - **Advanced configuration**: Full support for all puppeteer-real-browser options
 - **Random scrolling**: Tools for natural scrolling to avoid detection
-- **Comprehensive toolset**: 10+ tools covering all browser automation needs
+- **Comprehensive toolset**: 10 tools covering all browser automation needs
 - **Proxy support**: Built-in proxy configuration for enhanced privacy
 - **Captcha handling**: Support for solving reCAPTCHA, hCaptcha, and Turnstile
-- **Target management**: Support for `setTarget` function
 - **Error handling**: Robust error handling and reporting
 
 ## Prerequisites
@@ -230,16 +228,6 @@ AI: I'll get the text content of the entire page.
 [Uses get_content tool with type: 'text']
 ```
 
-#### Advanced Interactions
-```text
-User: "Use real click on the dropdown menu"
-AI: I'll use the enhanced real_click method for better interaction.
-[Uses real_click tool with selector and options]
-
-User: "Move the cursor to coordinates 500, 300 smoothly"
-AI: I'll move the cursor using enhanced movement.
-[Uses real_cursor tool with x, y coordinates and step options]
-```
 
 #### Working with Proxies
 ```text
@@ -268,15 +256,8 @@ AI: I'll set up the browser with your proxy configuration.
 | `type` | Type text into input field | `selector`, `text` | `delay` |
 | `wait` | Wait for various conditions | `type`, `value` | `timeout` |
 
-### Enhanced Puppeteer-Real-Browser Tools
 
-| Tool Name | Description | Required Parameters | Optional Parameters |
-|-----------|-------------|---------------------|-------------------|
-| `real_click` | Enhanced click using page.realClick | `selector` | `options` (button, clickCount, delay) |
-| `real_cursor` | Enhanced cursor movement using page.realCursor | `selector` OR `x`,`y` | `options` (steps) |
-| `set_target` | Use setTarget function for advanced targeting | `target` | None |
-
-### Human-like Behavior Tools
+### Behavior Tools
 
 | Tool Name | Description | Required Parameters | Optional Parameters |
 |-----------|-------------|---------------------|-------------------|
@@ -290,9 +271,9 @@ AI: I'll set up the browser with your proxy configuration.
 
 ## Advanced Features
 
-### Human-like Interactions
+### Natural Interactions
 
-The server includes tools designed to mimic human behavior:
+The server includes tools designed for natural browsing behavior:
 
 - **Random scrolling**: Performs scrolling with natural timing and variable distances
 
@@ -406,30 +387,6 @@ When initializing the browser with `browser_init`, you can configure:
 }
 ```
 
-#### Enhanced Real Browser Features
-
-Using real_click with options:
-```json
-{
-  "selector": "#submit-button",
-  "options": {
-    "button": "left",
-    "clickCount": 2,
-    "delay": 150
-  }
-}
-```
-
-Using real_cursor with coordinates:
-```json
-{
-  "x": 500,
-  "y": 300,
-  "options": {
-    "steps": 30
-  }
-}
-```
 
 ### Server Configuration
 
@@ -476,7 +433,7 @@ For advanced users, you can modify the server behavior by editing the source cod
    - On Windows: Run command prompt as Administrator
 
 5. **Detection issues**
-   - Use `real_click` and `real_cursor` instead of basic click
+   - Use appropriate delays between actions for better reliability
    - Add random delays with `random_scroll`
    - Use proxy if needed: `proxy: "http://proxy.example.com:8080"`
 
@@ -553,7 +510,7 @@ If you're still having issues:
 puppeteer-real-browser-mcp-server/
 ├── src/
 │   ├── index.ts         # Main server implementation
-│   └── stealth-actions.ts # Human-like interaction functions
+│   └── stealth-actions.ts # Browser interaction functions
 ├── test/
 │   └── test-server.ts   # Test script
 ├── package.json
@@ -583,6 +540,66 @@ To add a new tool:
 1. Add the tool definition to the `TOOLS` array in `src/index.ts`
 2. Implement the tool handler in the `CallToolRequestSchema` handler
 3. Test the new tool functionality
+
+## Testing
+
+This project includes a comprehensive testing suite with multiple categories optimized for different purposes:
+
+### Quick Tests (CI/CD) - ~30 seconds
+```bash
+npm run test:quick    # Fast Jest tests for protocol compliance
+npm test              # Alias for test:quick
+```
+
+### Comprehensive Tests - ~5-10 minutes  
+```bash
+npm run test:full     # End-to-end MCP client testing
+```
+
+### Performance Testing - ~2-3 minutes
+```bash
+npm run test:performance  # Browser performance benchmarking
+```
+
+Performance tests measure:
+- Browser initialization timing (5 trials)
+- Navigation performance across different site types
+- Screenshot generation speed (viewport vs full page)
+- Concurrent operation handling
+- Session longevity testing (30+ operations over 30 seconds)
+
+### Debug Tools - ~10 seconds
+```bash
+npm run test:debug    # Environment diagnostics and troubleshooting
+```
+
+Debug tools provide:
+- Environment validation (Node.js version, platform, memory)
+- Chrome installation detection with specific paths
+- Quick server health check with startup timing
+- Network connectivity validation
+- Build status verification
+
+### All Tests - ~7-13 minutes
+```bash
+npm run test:all      # Runs quick + full + performance tests
+npm run test:dashboard # Unified test runner with reporting
+```
+
+The test dashboard provides:
+- Unified execution of multiple test categories
+- Real-time progress reporting
+- Performance metrics and timing
+- Overall test status summary
+- Recommendations for failed tests
+- JSON results saved to `test-results/` directory
+
+### Integration Testing
+```bash
+npm run test:integration  # Claude Code CLI integration testing
+```
+
+For detailed testing information, see [TESTING.md](TESTING.md).
 
 ## Contributing
 

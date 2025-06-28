@@ -1,0 +1,8 @@
+Using the puppeteer-test-server MCP server, please test error handling:
+1. Initialize a browser
+2. Try to click on a non-existent element with selector "#this-element-does-not-exist"
+3. Try to navigate to an invalid URL "https://this-is-not-a-valid-domain-12345.com"
+4. Try to take a screenshot after closing the browser
+5. Report how each error is handled
+6. Note if retry mechanisms engage
+7. Check if error messages are helpful and specific

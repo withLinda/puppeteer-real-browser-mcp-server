@@ -231,8 +231,21 @@ describe('MCP Server Integration Tests', () => {
     });
   });
 
-  describe('Browser Functionality', () => {
-    test('browser_init tool should be available', (done) => {
+  describe('Tool Validation (Centralized)', () => {
+    const expectedTools = [
+      'browser_init',
+      'navigate', 
+      'screenshot',
+      'get_content',
+      'click',
+      'type',
+      'wait',
+      'browser_close',
+      'solve_captcha',
+      'random_scroll'
+    ];
+
+    test('should have exactly 10 tools available', (done) => {
       const toolsMessage = JSON.stringify({
         jsonrpc: '2.0',
         id: 10,
@@ -248,11 +261,93 @@ describe('MCP Server Integration Tests', () => {
             const response = JSON.parse(line);
             if (response.id === 10 && response.result) {
               const tools = response.result.tools;
+              
+              expect(tools).toHaveLength(10);
+              expect(tools.map((t: any) => t.name).sort()).toEqual(expectedTools.sort());
+              done();
+            }
+          } catch (e) {
+            // Ignore non-JSON lines
+          }
+        });
+      });
+
+      serverProcess.stderr?.on('data', (data) => {
+        if (data.toString().includes('MCP Server for puppeteer-real-browser started')) {
+          serverProcess.stdin?.write(toolsMessage);
+        }
+      });
+
+      setTimeout(() => {
+        done(new Error('Could not verify tool count'));
+      }, 10000);
+    });
+
+    test('all tools should have valid schemas and descriptions', (done) => {
+      const toolsMessage = JSON.stringify({
+        jsonrpc: '2.0',
+        id: 11,
+        method: 'tools/list',
+        params: {}
+      }) + '\n';
+
+      serverProcess.stdout?.on('data', (data) => {
+        const lines = data.toString().split('\n').filter((line: string) => line.trim());
+        
+        lines.forEach((line: string) => {
+          try {
+            const response = JSON.parse(line);
+            if (response.id === 11 && response.result) {
+              const tools = response.result.tools;
+              
+              tools.forEach((tool: any) => {
+                expect(tool.name).toBeDefined();
+                expect(tool.description).toBeDefined();
+                expect(tool.inputSchema).toBeDefined();
+                expect(typeof tool.inputSchema).toBe('object');
+              });
+              
+              done();
+            }
+          } catch (e) {
+            // Ignore non-JSON lines
+          }
+        });
+      });
+
+      serverProcess.stderr?.on('data', (data) => {
+        if (data.toString().includes('MCP Server for puppeteer-real-browser started')) {
+          serverProcess.stdin?.write(toolsMessage);
+        }
+      });
+
+      setTimeout(() => {
+        done(new Error('Could not verify tool schemas'));
+      }, 10000);
+    });
+
+    test('browser_init tool should have correct schema', (done) => {
+      const toolsMessage = JSON.stringify({
+        jsonrpc: '2.0',
+        id: 12,
+        method: 'tools/list',
+        params: {}
+      }) + '\n';
+
+      serverProcess.stdout?.on('data', (data) => {
+        const lines = data.toString().split('\n').filter((line: string) => line.trim());
+        
+        lines.forEach((line: string) => {
+          try {
+            const response = JSON.parse(line);
+            if (response.id === 12 && response.result) {
+              const tools = response.result.tools;
               const browserInitTool = tools.find((tool: any) => tool.name === 'browser_init');
               
               expect(browserInitTool).toBeDefined();
               expect(browserInitTool.description).toContain('anti-detection');
               expect(browserInitTool.inputSchema.properties.headless).toBeDefined();
+              expect(browserInitTool.inputSchema.properties.proxy).toBeDefined();
               done();
             }
           } catch (e) {

@@ -1,0 +1,12 @@
+Using the puppeteer-test-server MCP server, please test the previously failing scenario:
+1. Initialize a browser in non-headless mode (headless: false)
+2. Navigate to https://www.cursor.com/dashboard
+3. Wait for the page to load
+4. Take a screenshot
+5. Close the browser
+
+This previously caused "Navigating frame was detached" errors. Please report:
+- Whether the navigation succeeds
+- If any retries were needed
+- Whether the screenshot was captured successfully
+- Any error messages encountered

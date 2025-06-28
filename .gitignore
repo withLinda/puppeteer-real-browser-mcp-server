@@ -84,3 +84,32 @@ Thumbs.db
 
 # Yarn Integrity file
 .yarn-integrity
+
+# Puppeteer
+.local-chromium/
+
+# Test artifacts  
+test-results/
+screenshots/
+test-*.log
+results-*.json
+summary-*.md
+errors-*.log
+
+# MCP specific
+.mcp.json
+mcp-config.json
+
+# Temporary files
+*.tmp
+*.temp
+
+# Security
+.env.*
+!.env.example
+secrets/
+private/
+
+# Cache directories
+.cache/
+.parcel-cache/

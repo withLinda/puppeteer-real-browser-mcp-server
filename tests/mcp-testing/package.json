@@ -1,0 +1,20 @@
+{
+  "name": "mcp-server-tests",
+  "version": "1.0.0",
+  "description": "Comprehensive test suite for puppeteer-real-browser MCP server",
+  "main": "run-all-tests.js",
+  "scripts": {
+    "test": "node run-all-tests.js",
+    "test:smoke": "node run-smoke-test.js",
+    "test:phase1": "node -e \"require('./phase1-protocol-tests').run()\"",
+    "test:phase2": "node -e \"require('./phase2-browser-tests').run()\"",
+    "test:phase3": "node -e \"require('./phase3-error-recovery-tests').run()\"",
+    "test:phase4": "node -e \"require('./phase4-advanced-features-tests').run()\""
+  },
+  "dependencies": {
+    "date-fns": "^2.30.0",
+    "uuid": "^9.0.0"
+  },
+  "author": "",
+  "license": "MIT"
+}

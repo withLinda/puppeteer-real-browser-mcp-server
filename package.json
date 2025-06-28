@@ -7,7 +7,15 @@
     "build": "tsc",
     "start": "node dist/index.js",
     "dev": "tsx src/index.ts",
-    "test": "tsx test/test-server.ts"
+    "test": "npm run test:quick",
+    "test:quick": "jest --testTimeout=30000",
+    "test:full": "cd tests/mcp-testing && npm test",
+    "test:performance": "node tests/performance/performance-tests.js",
+    "test:integration": "echo 'Use Claude Code CLI with test prompts in tests/mcp-testing/claude-prompts/'",
+    "test:debug": "node debug-server.js",
+    "test:all": "npm run test:quick && npm run test:full && npm run test:performance",
+    "test:dashboard": "node test-runner.js",
+    "test:ci": "node test-runner.js ci"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "latest",

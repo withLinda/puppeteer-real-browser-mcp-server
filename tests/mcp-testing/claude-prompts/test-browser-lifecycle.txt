@@ -1,0 +1,10 @@
+Using the puppeteer-test-server MCP server, please perform a complete browser lifecycle test:
+1. Initialize a browser with headless: true
+2. Navigate to https://httpbin.org/user-agent
+3. Get the page content and verify it contains user-agent information
+4. Take a screenshot
+5. Navigate to https://example.com
+6. Take another screenshot
+7. Close the browser
+
+Report success/failure for each step and note any errors or retry attempts.
