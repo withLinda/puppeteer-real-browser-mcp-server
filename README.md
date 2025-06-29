@@ -110,8 +110,9 @@ assistants to control a real browser, take screenshots, extract content, and mor
 
 - **Stealth by default**: All browser instances use anti-detection features
 - **Advanced configuration**: Full support for all puppeteer-real-browser options
+- **Dynamic selector discovery**: Intelligent element finding without hardcoded selectors
 - **Random scrolling**: Tools for natural scrolling to avoid detection
-- **Comprehensive toolset**: 10 tools covering all browser automation needs
+- **Comprehensive toolset**: 11 tools covering all browser automation needs
 - **Proxy support**: Built-in proxy configuration for enhanced privacy
 - **Captcha handling**: Support for solving reCAPTCHA, hCaptcha, and Turnstile
 - **Error handling**: Robust error handling and reporting
@@ -255,6 +256,7 @@ AI: I'll set up the browser with your proxy configuration.
 | `click` | Standard click on element | `selector` | `waitForNavigation` |
 | `type` | Type text into input field | `selector`, `text` | `delay` |
 | `wait` | Wait for various conditions | `type`, `value` | `timeout` |
+| `find_selector` | Find CSS selector for element containing specific text | `text` | `elementType`, `exact` |
 
 
 ### Behavior Tools
@@ -263,6 +265,12 @@ AI: I'll set up the browser with your proxy configuration.
 |-----------|-------------|---------------------|-------------------|
 | `random_scroll` | Perform random scrolling with natural timing | None | None |
 
+### Element Discovery Tools
+
+| Tool Name | Description | Required Parameters | Optional Parameters |
+|-----------|-------------|---------------------|-------------------|
+| `find_selector` | Find CSS selector for element containing specific text | `text` | `elementType`, `exact` |
+
 ### Anti-Detection Tools
 
 | Tool Name | Description | Required Parameters | Optional Parameters |
@@ -270,6 +278,27 @@ AI: I'll set up the browser with your proxy configuration.
 | `solve_captcha` | Attempt to solve captchas | `type` | None |
 
 ## Advanced Features
+
+### Dynamic Selector Discovery
+
+The server includes intelligent element discovery capabilities through the `find_selector` tool:
+
+- **Text-based element finding**: Automatically locates elements containing specific text
+- **Smart CSS selector generation**: Creates unique, robust CSS selectors similar to Chrome DevTools
+- **Element type filtering**: Optionally restrict search to specific HTML elements (e.g., buttons, links)
+- **Exact or partial text matching**: Choose between precise text matching or substring searches
+- **Universal compatibility**: Works across any website without hardcoded selectors
+
+**Example Usage:**
+```text
+User: "Find the submit button that says 'Sign Up'"
+AI: I'll locate that button for you.
+[Uses find_selector with text: "Sign Up", elementType: "button"]
+
+AI: Found button at selector: "form > button.btn-primary:nth-of-type(2)"
+```
+
+This approach eliminates the need for manually crafted selectors and makes automation more reliable across different websites.
 
 ### Natural Interactions
 

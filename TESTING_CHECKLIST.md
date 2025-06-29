@@ -42,17 +42,17 @@ Check if the puppeteer-real-browser MCP server is properly configured and recogn
 
 **Expected Results:**
 - [ ] Server shows as "connected" or "active"
-- [ ] 10 tools are listed (browser_init, navigate, screenshot, get_content, click, type, wait, browser_close, solve_captcha, random_scroll)
+- [ ] 11 tools are listed (browser_init, navigate, screenshot, get_content, click, type, wait, browser_close, solve_captcha, random_scroll, find_selector)
 - [ ] No connection errors or warnings
 
 ### 1.2 Tool Availability Verification
 **Prompt for Claude Code CLI:**
 ```
-List all available tools from the puppeteer-real-browser MCP server and describe what each tool does. Verify that all 10 expected tools are present and have proper descriptions.
+List all available tools from the puppeteer-real-browser MCP server and describe what each tool does. Verify that all 11 expected tools are present and have proper descriptions.
 ```
 
 **Expected Results:**
-- [ ] All 10 tools present with descriptions
+- [ ] All 11 tools present with descriptions
 - [ ] Tool schemas include required parameters
 - [ ] No "Method not found" errors
 
@@ -244,7 +244,7 @@ Verify MCP protocol compliance:
 **Expected Results:**
 - [ ] resources/list returns `{"resources": []}`
 - [ ] prompts/list returns `{"prompts": []}`
-- [ ] tools/list returns array of 10 tools
+- [ ] tools/list returns array of 11 tools
 - [ ] All responses are valid JSON-RPC 2.0
 - [ ] No stdout pollution with non-JSON content
 

@@ -484,6 +484,30 @@ const TOOLS = [
             properties: {},
         },
     },
+    {
+        name: 'find_selector',
+        description: 'Find CSS selector for element containing specific text',
+        inputSchema: {
+            type: 'object',
+            properties: {
+                text: {
+                    type: 'string',
+                    description: 'Text content to search for in elements',
+                },
+                elementType: {
+                    type: 'string',
+                    description: 'HTML element type to search within (e.g., "button", "a", "div"). Default is "*" for any element',
+                    default: '*',
+                },
+                exact: {
+                    type: 'boolean',
+                    description: 'Whether to match exact text (true) or partial text (false)',
+                    default: false,
+                },
+            },
+            required: ['text'],
+        },
+    },
 ];
 // Register initialize handler
 server.setRequestHandler(types_js_1.InitializeRequestSchema, async (request) => ({
@@ -756,6 +780,75 @@ server.setRequestHandler(types_js_1.CallToolRequestSchema, async (request) => {
                     ],
                 };
             }, 'Failed to perform random scrolling');
+        case 'find_selector':
+            return await withErrorHandling(async () => {
+                const { page } = await initializeBrowser();
+                const { text, elementType = '*', exact = false } = args;
+                const selector = await page.evaluate((searchText, elType, exactMatch) => {
+                    // Function to generate unique CSS selector
+                    function getCssSelector(el) {
+                        const path = [];
+                        while (el && el.nodeType === Node.ELEMENT_NODE) {
+                            let selector = el.nodeName.toLowerCase();
+                            // Prefer ID
+                            if (el.id) {
+                                selector += '#' + CSS.escape(el.id);
+                                path.unshift(selector);
+                                break;
+                            }
+                            // Add classes if present
+                            if (el.className && typeof el.className === 'string') {
+                                const classes = el.className.trim().split(/\s+/);
+                                if (classes.length > 0 && classes[0]) {
+                                    selector += '.' + classes.map(c => CSS.escape(c)).join('.');
+                                }
+                            }
+                            // Add position among siblings if needed
+                            let sibling = el.previousElementSibling;
+                            let nth = 1;
+                            while (sibling) {
+                                if (sibling.nodeName.toLowerCase() === el.nodeName.toLowerCase()) {
+                                    nth++;
+                                }
+                                sibling = sibling.previousElementSibling;
+                            }
+                            if (nth > 1) {
+                                selector += ':nth-of-type(' + nth + ')';
+                            }
+                            path.unshift(selector);
+                            const parent = el.parentElement;
+                            if (!parent)
+                                break;
+                            el = parent;
+                        }
+                        return path.join(' > ');
+                    }
+                    // Find all matching elements
+                    const elements = Array.from(document.querySelectorAll(elType));
+                    const matches = elements.filter(el => {
+                        const content = el.textContent || '';
+                        return exactMatch
+                            ? content.trim() === searchText
+                            : content.includes(searchText);
+                    });
+                    if (matches.length === 0) {
+                        return null;
+                    }
+                    // Return selector for first match
+                    return getCssSelector(matches[0]);
+                }, text, elementType, exact);
+                if (!selector) {
+                    throw new Error(`No element found containing text: "${text}"`);
+                }
+                return {
+                    content: [
+                        {
+                            type: 'text',
+                            text: selector,
+                        },
+                    ],
+                };
+            }, 'Failed to find selector');
         default:
             throw new Error(`Unknown tool: ${name}`);
     }

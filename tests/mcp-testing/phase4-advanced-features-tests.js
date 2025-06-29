@@ -6,6 +6,21 @@ class Phase4AdvancedFeaturesTests {
     this.client = new MCPTestClient(logger);
   }
 
+  // Helper function for defensive content access
+  getContentText(result) {
+    // Handle new MCP format
+    if (result?.content?.[0]?.text !== undefined) {
+      return result.content[0].text;
+    }
+    
+    // Handle legacy string format for backward compatibility
+    if (typeof result?.content === 'string') {
+      return result.content;
+    }
+    
+    return '';
+  }
+
   async run() {
     this.logger.startPhase('Phase 4', 'Advanced Features Testing');
 
@@ -75,10 +90,29 @@ class Phase4AdvancedFeaturesTests {
         });
       }
 
-      // Test clicking (using standard click tool)
+      // Test clicking (using dynamic selector discovery)
+      // First, find the exact selector for the submit button
+      const selectorResult = await this.client.callTool('find_selector', {
+        text: 'Submit order',
+        elementType: 'button'
+      });
+
+      if (!selectorResult?.success) {
+        this.logger.logTest('Phase 4', 'Find Submit Button Selector', 'failed', {
+          error: selectorResult?.error
+        });
+        return;
+      }
+
+      const submitButtonSelector = selectorResult.content[0]?.text;
+      this.logger.logTest('Phase 4', 'Find Submit Button Selector', 'passed', {
+        selector: submitButtonSelector
+      });
+
+      // Now click using the discovered selector
       const clickStartTime = Date.now();
       const clickResult = await this.client.callTool('click', {
-        selector: 'button[type="submit"]',
+        selector: submitButtonSelector,
         waitForNavigation: true
       });
       const clickDuration = Date.now() - clickStartTime;
@@ -86,11 +120,13 @@ class Phase4AdvancedFeaturesTests {
       if (clickResult?.success) {
         this.logger.logTest('Phase 4', 'Clicking', 'passed', {
           duration: `${clickDuration}ms`,
-          hasNavigation: clickDuration > 100 // Should include navigation time
+          hasNavigation: clickDuration > 100, // Should include navigation time
+          selector: submitButtonSelector
         });
       } else {
         this.logger.logTest('Phase 4', 'Clicking', 'failed', {
-          error: clickResult?.error
+          error: clickResult?.error,
+          selector: submitButtonSelector
         });
       }
 
@@ -224,8 +260,8 @@ class Phase4AdvancedFeaturesTests {
       });
 
       this.logger.logTest('Phase 4', 'Get HTML Content', 
-                         htmlResult?.success && htmlResult.content?.includes('<!doctype html>') ? 'passed' : 'failed', {
-        contentLength: htmlResult?.content?.length,
+                         htmlResult?.success && this.getContentText(htmlResult).toLowerCase().includes('<!doctype html>') ? 'passed' : 'failed', {
+        contentLength: this.getContentText(htmlResult).length,
         error: htmlResult?.error
       });
 
@@ -235,8 +271,8 @@ class Phase4AdvancedFeaturesTests {
       });
 
       this.logger.logTest('Phase 4', 'Get Text Content', 
-                         textResult?.success && textResult.content?.includes('Example Domain') ? 'passed' : 'failed', {
-        contentLength: textResult?.content?.length,
+                         textResult?.success && this.getContentText(textResult).includes('Example Domain') ? 'passed' : 'failed', {
+        contentLength: this.getContentText(textResult).length,
         error: textResult?.error
       });
 
@@ -247,8 +283,8 @@ class Phase4AdvancedFeaturesTests {
       });
 
       this.logger.logTest('Phase 4', 'Get Content from Selector', 
-                         selectorContentResult?.success && selectorContentResult.content === 'Example Domain' ? 'passed' : 'failed', {
-        content: selectorContentResult?.content,
+                         selectorContentResult?.success && this.getContentText(selectorContentResult) === 'Example Domain' ? 'passed' : 'failed', {
+        content: this.getContentText(selectorContentResult),
         error: selectorContentResult?.error
       });
 
