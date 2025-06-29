@@ -674,6 +674,35 @@ async function initializeBrowser(options?: any) {
   };
 
   const connectionStrategies = [
+    // Strategy 0: Maximized window configuration
+    {
+      strategyName: 'Maximized Window Configuration',
+      strategy: {
+        executablePath: detectedChromePath,
+        headless: options?.headless ?? false,
+        turnstile: true,
+        args: [
+          "--start-maximized",
+          "--disable-blink-features=AutomationControlled",
+        ],
+        disableXvfb: true,
+        connectOption: {
+          defaultViewport: null,
+        },
+      }
+    },
+    
+    // Strategy 1: Minimal Configuration (simplest approach)
+    createConnectionStrategy('Minimal Configuration', {
+      customConfig: {
+        chromeFlags: [
+          '--no-first-run',
+          '--no-default-browser-check',
+          '--disable-default-apps'
+        ]
+      }
+    }),
+    
     // Strategy 1: Standard connection with optimal port
     createConnectionStrategy('Optimal Configuration', {}),
     
@@ -727,9 +756,21 @@ async function initializeBrowser(options?: any) {
       // Enhanced connection attempt with localhost/IP fallback
       const result = await withTimeout(async () => {
         try {
+          // Debug logging
+          console.error(`   Strategy config: ${JSON.stringify({
+            headless: strategy.headless,
+            chromeFlags: strategy.customConfig?.chromeFlags?.slice(0, 5) || 'none',
+            chromePath: strategy.customConfig?.chromePath || 'default'
+          })}`);
+          
           // First attempt with the strategy as configured
-          return await connect(strategy);
+          const connectResult = await connect(strategy);
+          console.error(`   ✅ Connection successful with ${strategyName}`);
+          return connectResult;
         } catch (connectionError) {
+          // Log the specific error for debugging
+          console.error(`   ❌ Connection failed: ${connectionError instanceof Error ? connectionError.message : String(connectionError)}`);
+          
           // Check if it's a connection-related error that might benefit from host fallback
           const errorMsg = connectionError instanceof Error ? connectionError.message : String(connectionError);
           
@@ -756,7 +797,7 @@ async function initializeBrowser(options?: any) {
           // Re-throw if not a connection error we can handle
           throw connectionError;
         }
-      }, platform === 'win32' ? 120000 : 90000, `browser-connection-${strategyName.toLowerCase().replace(/\s+/g, '-')}`);
+      }, platform === 'win32' ? 180000 : 150000, `browser-connection-${strategyName.toLowerCase().replace(/\s+/g, '-')}`);
       
       const { browser, page } = result;
 
@@ -851,13 +892,68 @@ async function initializeBrowser(options?: any) {
 async function closeBrowser() {
   if (browserInstance) {
     try {
+      // First, close all pages to prevent lingering processes
+      const pages = await browserInstance.pages();
+      for (const page of pages) {
+        try {
+          await page.close();
+        } catch (error) {
+          console.error('Error closing page:', error);
+        }
+      }
+      
+      // Then close the browser
       await browserInstance.close();
+      
+      // Force kill the browser process if it still exists
+      if (browserInstance.process() != null) {
+        try {
+          browserInstance.process().kill('SIGTERM');
+          // Wait a moment for graceful shutdown
+          await new Promise(resolve => setTimeout(resolve, 1000));
+          
+          // If still running, force kill
+          if (browserInstance.process() != null && !browserInstance.process().killed) {
+            browserInstance.process().kill('SIGKILL');
+          }
+        } catch (error) {
+          console.error('Error force-killing browser process:', error);
+        }
+      }
     } catch (error) {
       console.error('Error closing browser:', error);
+      
+      // Force kill as last resort
+      if (browserInstance && browserInstance.process() != null) {
+        try {
+          browserInstance.process().kill('SIGKILL');
+        } catch (killError) {
+          console.error('Error force-killing browser process with SIGKILL:', killError);
+        }
+      }
     } finally {
       browserInstance = null;
       pageInstance = null;
     }
+  }
+}
+
+// Force kill all Chrome processes system-wide (last resort cleanup)
+async function forceKillAllChromeProcesses() {
+  try {
+    const { spawn } = require('child_process');
+    
+    // Kill Chrome processes on macOS/Linux
+    if (process.platform !== 'win32') {
+      spawn('pkill', ['-f', 'Google Chrome'], { stdio: 'ignore' });
+      spawn('pkill', ['-f', 'chrome'], { stdio: 'ignore' });
+    } else {
+      // Kill Chrome processes on Windows
+      spawn('taskkill', ['/F', '/IM', 'chrome.exe'], { stdio: 'ignore' });
+      spawn('taskkill', ['/F', '/IM', 'GoogleChrome.exe'], { stdio: 'ignore' });
+    }
+  } catch (error) {
+    console.error('Error force-killing Chrome processes:', error);
   }
 }
 
@@ -1601,6 +1697,8 @@ async function main() {
   // Cleanup on exit
   process.on('SIGINT', async () => {
     await closeBrowser();
+    // Force kill any remaining Chrome processes
+    await forceKillAllChromeProcesses();
     process.exit(0);
   });
 }
