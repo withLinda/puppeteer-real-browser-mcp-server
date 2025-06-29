@@ -246,10 +246,11 @@ describe('MCP Server Integration Tests', () => {
       'wait',
       'browser_close',
       'solve_captcha',
-      'random_scroll'
+      'random_scroll',
+      'find_selector'
     ];
 
-    test('should have exactly 10 tools available', (done) => {
+    test('should have exactly 11 tools available', (done) => {
       const toolsMessage = JSON.stringify({
         jsonrpc: '2.0',
         id: 10,
@@ -274,7 +275,7 @@ describe('MCP Server Integration Tests', () => {
             if (response.id === 10 && response.result) {
               const tools = response.result.tools;
               
-              expect(tools).toHaveLength(10);
+              expect(tools).toHaveLength(11);
               expect(tools.map((t: any) => t.name).sort()).toEqual(expectedTools.sort());
               responseReceived = true;
               clearTimeout(timeout);

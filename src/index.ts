@@ -588,7 +588,7 @@ server.setRequestHandler(InitializeRequestSchema, async (request) => ({
   },
   serverInfo: {
     name: 'puppeteer-real-browser-mcp-server',
-    version: '1.0.13',
+    version: '1.2.0',
   },
 }));
 
