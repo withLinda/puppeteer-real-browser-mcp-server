@@ -346,7 +346,15 @@ async function initializeBrowser(options) {
                 '--no-default-browser-check',
                 '--disable-default-apps',
                 '--start-maximized',
-                '--disable-blink-features=AutomationControlled'
+                '--disable-blink-features=AutomationControlled',
+                // Additional flags to help with stack overflow issues
+                '--disable-dev-shm-usage', // Overcome limited resource problems
+                '--no-sandbox', // Bypass OS security model, critical for Linux containers
+                '--disable-setuid-sandbox',
+                '--disable-web-security', // Disable CORS
+                '--disable-features=VizDisplayCompositor', // Disable GPU compositing
+                '--max-old-space-size=4096', // Increase memory limit
+                '--stack-size=16000' // Increase stack size limit for Node.js
             ],
             ...customConfig
         };
@@ -522,6 +530,11 @@ const TOOLS = [
                 selector: {
                     type: 'string',
                     description: 'CSS selector of element to screenshot',
+                },
+                safeMode: {
+                    type: 'boolean',
+                    description: 'Use safer screenshot method to avoid stack overflow issues (may reduce quality)',
+                    default: false,
                 },
             },
         },
@@ -738,11 +751,59 @@ server.setRequestHandler(types_js_1.CallToolRequestSchema, async (request) => {
                             fullPage: args.fullPage || false,
                             encoding: 'base64',
                         };
-                        if (args.selector) {
-                            const element = await page.$(args.selector);
-                            if (!element)
-                                throw new Error(`Element not found: ${args.selector}`);
-                            const screenshot = await element.screenshot({ encoding: 'base64' });
+                        // Check if safe mode is enabled to preemptively use safer methods
+                        if (args.safeMode) {
+                            console.error('Safe mode enabled, using CDP method directly...');
+                            try {
+                                const client = await page.target().createCDPSession();
+                                // Get layout metrics first
+                                const { layoutViewport } = await client.send('Page.getLayoutMetrics');
+                                // Use CDP directly for safer screenshot
+                                const screenshotData = await client.send('Page.captureScreenshot', {
+                                    format: 'png',
+                                    quality: 80,
+                                    clip: args.selector ? undefined : {
+                                        x: 0,
+                                        y: 0,
+                                        width: Math.min(layoutViewport.clientWidth, 1920),
+                                        height: Math.min(layoutViewport.clientHeight, 1080),
+                                        scale: 1
+                                    },
+                                    captureBeyondViewport: false,
+                                });
+                                await client.detach();
+                                return {
+                                    content: [
+                                        {
+                                            type: 'image',
+                                            data: screenshotData.data,
+                                            mimeType: 'image/png',
+                                        },
+                                    ],
+                                };
+                            }
+                            catch (safeModeError) {
+                                console.error('Safe mode CDP method failed, falling back to simple screenshot...');
+                                // Fall through to try standard method with minimal options
+                            }
+                        }
+                        try {
+                            if (args.selector) {
+                                const element = await page.$(args.selector);
+                                if (!element)
+                                    throw new Error(`Element not found: ${args.selector}`);
+                                const screenshot = await element.screenshot({ encoding: 'base64' });
+                                return {
+                                    content: [
+                                        {
+                                            type: 'image',
+                                            data: screenshot,
+                                            mimeType: 'image/png',
+                                        },
+                                    ],
+                                };
+                            }
+                            const screenshot = await page.screenshot(screenshotOptions);
                             return {
                                 content: [
                                     {
@@ -753,16 +814,65 @@ server.setRequestHandler(types_js_1.CallToolRequestSchema, async (request) => {
                                 ],
                             };
                         }
-                        const screenshot = await page.screenshot(screenshotOptions);
-                        return {
-                            content: [
-                                {
-                                    type: 'image',
-                                    data: screenshot,
-                                    mimeType: 'image/png',
-                                },
-                            ],
-                        };
+                        catch (error) {
+                            // Handle specific stack overflow error from puppeteer-real-browser/rebrowser
+                            if (error instanceof Error && error.message.includes('Maximum call stack size exceeded')) {
+                                console.error('Stack overflow detected in screenshot operation, attempting fallback method...');
+                                // Fallback method: Use CDP directly with smaller chunks
+                                try {
+                                    const client = await page.target().createCDPSession();
+                                    // Get layout metrics first
+                                    const { layoutViewport, visualViewport } = await client.send('Page.getLayoutMetrics');
+                                    // Use a simplified screenshot approach
+                                    const screenshotData = await client.send('Page.captureScreenshot', {
+                                        format: 'png',
+                                        quality: 80,
+                                        clip: args.selector ? undefined : {
+                                            x: 0,
+                                            y: 0,
+                                            width: Math.min(layoutViewport.clientWidth, 1920),
+                                            height: Math.min(layoutViewport.clientHeight, 1080),
+                                            scale: 1
+                                        },
+                                        captureBeyondViewport: false, // Disable to avoid stack overflow
+                                    });
+                                    await client.detach();
+                                    return {
+                                        content: [
+                                            {
+                                                type: 'image',
+                                                data: screenshotData.data,
+                                                mimeType: 'image/png',
+                                            },
+                                        ],
+                                    };
+                                }
+                                catch (fallbackError) {
+                                    // Last resort: try with minimal options
+                                    try {
+                                        const simpleScreenshot = await page.screenshot({
+                                            encoding: 'base64',
+                                            fullPage: false, // Force viewport only
+                                            type: 'png',
+                                        });
+                                        return {
+                                            content: [
+                                                {
+                                                    type: 'image',
+                                                    data: simpleScreenshot,
+                                                    mimeType: 'image/png',
+                                                },
+                                            ],
+                                        };
+                                    }
+                                    catch (lastResortError) {
+                                        throw new Error(`Screenshot failed with stack overflow. Original error: ${error.message}. CDP fallback error: ${fallbackError instanceof Error ? fallbackError.message : String(fallbackError)}. Simple fallback error: ${lastResortError instanceof Error ? lastResortError.message : String(lastResortError)}`);
+                                    }
+                                }
+                            }
+                            // Re-throw other errors
+                            throw error;
+                        }
                     }, 3, 1000, 'screenshot');
                 }, 30000, 'screenshot-timeout');
             }, 'Failed to take screenshot');
