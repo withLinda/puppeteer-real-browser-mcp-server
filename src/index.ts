@@ -197,7 +197,7 @@ function detectChromePath(): string | null {
   for (const chromePath of possiblePaths) {
     try {
       if (fs.existsSync(chromePath)) {
-        console.error(`Found Chrome at: ${chromePath}`);
+        console.error(`✓ Found Chrome at: ${chromePath}`);
         return chromePath;
       }
     } catch (error) {
@@ -205,7 +205,25 @@ function detectChromePath(): string | null {
     }
   }
 
-  console.error(`Chrome not found at any expected paths for platform: ${platform}`);
+  // Enhanced error message for Windows with specific troubleshooting steps
+  if (platform === 'win32') {
+    console.error(`❌ Chrome not found at any expected Windows paths:`);
+    console.error(`   Searched locations:`);
+    possiblePaths.forEach(path => console.error(`   - ${path}`));
+    console.error(`\n   📝 Windows Troubleshooting Steps:`);
+    console.error(`   1. Verify Chrome is installed: Download from https://www.google.com/chrome/`);
+    console.error(`   2. Check installation location manually in File Explorer`);
+    console.error(`   3. If Chrome is in a custom location, specify the path manually:`);
+    console.error(`      Ask Claude: "Initialize browser with custom Chrome path at C:\\Your\\Path\\chrome.exe"`);
+    console.error(`   4. Try running as Administrator if permission issues occur`);
+    console.error(`   5. Check Windows Defender isn't blocking Chrome execution`);
+    console.error(`   6. For Cursor IDE users: Add explicit Chrome path to MCP configuration`);
+  } else {
+    console.error(`❌ Chrome not found at any expected paths for platform: ${platform}`);
+    console.error(`   Searched locations:`);
+    possiblePaths.forEach(path => console.error(`   - ${path}`));
+  }
+  
   return null;
 }
 
@@ -264,15 +282,54 @@ async function initializeBrowser(options?: any) {
     connectOptions.plugins = options.plugins;
   }
 
-  const result = await connect(connectOptions);
-  const { browser, page } = result;
+  try {
+    const result = await connect(connectOptions);
+    const { browser, page } = result;
 
-  browserInstance = browser;
-  pageInstance = page;
+    browserInstance = browser;
+    pageInstance = page;
 
-  // Viewport is now set to null for maximized window behavior
-
-  return { browser, page };
+    // Viewport is now set to null for maximized window behavior
+    console.error(`✓ Browser initialized successfully`);
+    return { browser, page };
+  } catch (error) {
+    // Enhanced error handling for browser launch failures
+    const errorMessage = error instanceof Error ? error.message : String(error);
+    
+    if (errorMessage.includes('ENOENT') || errorMessage.includes('spawn') || errorMessage.includes('chrome')) {
+      const platform = process.platform;
+      
+      if (platform === 'win32') {
+        console.error(`❌ Browser launch failed on Windows:`);
+        console.error(`   Error: ${errorMessage}`);
+        console.error(`\n   🔧 Windows-Specific Solutions:`);
+        console.error(`   1. Chrome Path Issues:`);
+        console.error(`      - Chrome might not be installed or in an unexpected location`);
+        console.error(`      - Try specifying custom Chrome path: customConfig.chromePath`);
+        console.error(`      - Example: {"customConfig": {"chromePath": "C:\\\\Program Files\\\\Google\\\\Chrome\\\\Application\\\\chrome.exe"}}`);
+        console.error(`\n   2. Permission Issues:`);
+        console.error(`      - Run Cursor IDE or your terminal as Administrator`);
+        console.error(`      - Check User Account Control (UAC) settings`);
+        console.error(`\n   3. Security Software:`);
+        console.error(`      - Add Chrome and Node.js to Windows Defender exclusions`);
+        console.error(`      - Temporarily disable antivirus to test`);
+        console.error(`\n   4. Chrome Process Issues:`);
+        console.error(`      - Kill any existing Chrome processes in Task Manager`);
+        console.error(`      - Try headless mode: {"headless": true}`);
+        console.error(`\n   5. Cursor IDE Configuration:`);
+        console.error(`      - Add Chrome path to MCP configuration env variables`);
+        console.error(`      - Use PUPPETEER_LAUNCH_OPTIONS environment variable`);
+      } else {
+        console.error(`❌ Browser launch failed on ${platform}:`);
+        console.error(`   Error: ${errorMessage}`);
+      }
+      
+      throw new Error(`Browser initialization failed: ${errorMessage}. See console for platform-specific troubleshooting steps.`);
+    }
+    
+    // Re-throw other types of errors
+    throw error;
+  }
 }
 
 async function closeBrowser() {

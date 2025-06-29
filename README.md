@@ -15,6 +15,7 @@ puppeteer-real-browser.
 5. [Installation](#installation)
 6. [Usage](#usage)
    - [With Claude Desktop](#with-claude-desktop)
+   - [With Cursor IDE](#with-cursor-ide)
    - [With Other AI Assistants](#with-other-ai-assistants)
 7. [Available Tools](#available-tools)
 8. [Advanced Features](#advanced-features)
@@ -177,6 +178,135 @@ Add to Claude Desktop config:
   }
 }
 ```
+
+### With Cursor IDE
+
+Cursor IDE has different MCP configuration requirements. Here are the setup methods for 2025:
+
+#### Method 1: One-Click Installation (Recommended for 2025)
+
+1. **Open Cursor IDE**
+2. **Open Command Palette** (`Ctrl+Shift+P` on Windows/Linux, `Cmd+Shift+P` on Mac)
+3. **Search for "Cursor Settings"** and select it
+4. **Click on "MCP" in the sidebar**
+5. **Browse curated MCP servers** and install browser automation tools with one-click
+6. **OAuth authentication** will be handled automatically
+
+#### Method 2: Manual Configuration
+
+**Configuration File Location:**
+- **Project-specific**: Create `.cursor/mcp.json` in your project directory
+- **Global**: Create `~/.cursor/mcp.json` in your home directory
+
+**Basic Configuration:**
+```json
+{
+  "mcpServers": {
+    "puppeteer-real-browser": {
+      "command": "npx",
+      "args": ["puppeteer-real-browser-mcp-server@latest"]
+    }
+  }
+}
+```
+
+**Windows-Specific Configuration (if experiencing Chrome path issues):**
+```json
+{
+  "mcpServers": {
+    "puppeteer-real-browser": {
+      "command": "npx",
+      "args": ["puppeteer-real-browser-mcp-server@latest"],
+      "env": {
+        "PUPPETEER_LAUNCH_OPTIONS": "{\"headless\": false, \"executablePath\": \"C:/Program Files/Google/Chrome/Application/chrome.exe\", \"args\": [\"--disable-gpu\", \"--no-sandbox\"]}",
+        "ALLOW_DANGEROUS": "true"
+      }
+    }
+  }
+}
+```
+
+**Advanced Configuration with Proxy and Custom Options:**
+```json
+{
+  "mcpServers": {
+    "puppeteer-real-browser": {
+      "command": "npx",
+      "args": ["puppeteer-real-browser-mcp-server@latest"],
+      "env": {
+        "PUPPETEER_LAUNCH_OPTIONS": "{\"headless\": false, \"args\": [\"--proxy-server=http://proxy:8080\"], \"executablePath\": \"C:/Program Files/Google/Chrome/Application/chrome.exe\"}",
+        "ALLOW_DANGEROUS": "true"
+      }
+    }
+  }
+}
+```
+
+#### Platform-Specific Chrome Paths for Cursor IDE
+
+**Windows:**
+```json
+"executablePath": "C:/Program Files/Google/Chrome/Application/chrome.exe"
+```
+Alternative paths to try:
+- `"C:/Program Files (x86)/Google/Chrome/Application/chrome.exe"`
+- `"%LOCALAPPDATA%/Google/Chrome/Application/chrome.exe"`
+
+**macOS:**
+```json
+"executablePath": "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"
+```
+
+**Linux:**
+```json
+"executablePath": "/usr/bin/google-chrome"
+```
+Alternative paths: `/usr/bin/chromium-browser`, `/snap/bin/chromium`
+
+#### Cursor IDE vs Claude Desktop Configuration Differences
+
+| Aspect | Claude Desktop | Cursor IDE |
+|--------|---------------|------------|
+| **Config Location** | `%APPDATA%\Claude\claude_desktop_config.json` | `~/.cursor/mcp.json` or `.cursor/mcp.json` |
+| **Setup Method** | Manual JSON editing | One-click install OR manual JSON |
+| **Authentication** | None required | OAuth support available |
+| **Environment Variables** | Limited support | Full environment variable support |
+| **Chrome Path Detection** | Automatic | May require manual configuration |
+
+#### Testing Cursor IDE Setup
+
+After configuration:
+1. **Restart Cursor IDE completely**
+2. **Open a new chat** 
+3. **Test with**: "Initialize a browser and navigate to google.com, then take a screenshot"
+
+If successful, you should see:
+- Browser window opening
+- Navigation to Google
+- Screenshot displayed in the chat
+
+#### Cursor IDE Troubleshooting
+
+**Common Issues:**
+
+1. **"MCP server not found"**
+   - Verify config file location and JSON syntax
+   - Use [jsonlint.com](https://jsonlint.com/) to validate JSON
+   - Ensure Node.js 18+ is installed
+
+2. **"Browser failed to launch" on Windows**
+   - Add explicit Chrome path in `executablePath`
+   - Try running Cursor IDE as Administrator
+   - Check Windows Defender isn't blocking Chrome
+
+3. **"Permission denied"**
+   - Use `sudo npm install -g puppeteer-real-browser-mcp-server` on Linux/Mac
+   - Run Command Prompt as Administrator on Windows
+
+4. **Configuration not loading**
+   - Ensure file is named exactly `mcp.json` (not `mcp.json.txt`)
+   - Check file is in correct directory
+   - Restart Cursor IDE after changes
 
 ### With Other AI Assistants
 
@@ -438,13 +568,50 @@ For advanced users, you can modify the server behavior by editing the source cod
 
 2. **Browser won't start**
    - Check if Chrome/Chromium is installed in standard locations
-   - **Windows specific**:
-     - Verify Chrome is installed at `C:\Program Files\Google\Chrome\Application\chrome.exe` or `C:\Program Files (x86)\Google\Chrome\Application\chrome.exe`
-     - If Chrome is in a custom location, specify it manually:
-       ```
-       Ask Claude: "Initialize browser with custom Chrome path at [your-chrome-path]"
-       ```
-     - Try running command prompt as Administrator
+   - **Windows specific troubleshooting**:
+     
+     **Step 1: Verify Chrome Installation Paths**
+     Check these locations in order:
+     - `C:\Program Files\Google\Chrome\Application\chrome.exe`
+     - `C:\Program Files (x86)\Google\Chrome\Application\chrome.exe`
+     - `%LOCALAPPDATA%\Google\Chrome\Application\chrome.exe`
+     - `%PROGRAMFILES%\Google\Chrome\Application\chrome.exe`
+     
+     **Step 2: Manual Path Configuration**
+     If Chrome is in a different location, specify it manually:
+     ```
+     Ask Claude: "Initialize browser with custom Chrome path at C:\Your\Chrome\Path\chrome.exe"
+     ```
+     
+     **Step 3: Windows Launch Arguments**
+     For Windows compatibility, use these launch arguments:
+     ```
+     Ask Claude: "Initialize browser with args --disable-gpu --no-sandbox --disable-setuid-sandbox"
+     ```
+     
+     **Step 4: Windows-Specific Solutions**
+     - **Run as Administrator**: Try running your IDE/terminal as Administrator
+     - **Windows Defender**: Add Chrome and Node.js to Windows Defender exclusions
+     - **Antivirus Software**: Temporarily disable antivirus to test if it's blocking Chrome
+     - **User Account Control**: Lower UAC settings temporarily for testing
+     - **Chrome Processes**: Kill any existing Chrome processes in Task Manager
+     
+     **Step 5: Alternative Chrome Installation**
+     If Chrome detection still fails:
+     - Download Chrome directly from [google.com/chrome](https://www.google.com/chrome/)
+     - Install to default location (`C:\Program Files\Google\Chrome\`)
+     - Restart your IDE after installation
+     
+     **Step 6: PowerShell vs Command Prompt**
+     Try switching between PowerShell and Command Prompt:
+     - Test with `cmd.exe` instead of PowerShell
+     - Test with PowerShell instead of Command Prompt
+     
+     **Step 7: Node.js and npm Configuration**
+     - Ensure Node.js is added to PATH: `node --version`
+     - Clear npm cache: `npm cache clean --force`
+     - Reinstall global packages: `npm install -g puppeteer-real-browser-mcp-server@latest`
+     
    - **Linux**: Install dependencies: `sudo apt-get install -y google-chrome-stable`
    - **macOS**: Ensure Chrome is in `/Applications/`
    - Try with `headless: true` first
@@ -455,6 +622,35 @@ For advanced users, you can modify the server behavior by editing the source cod
    - Check JSON syntax is valid (use [jsonlint.com](https://jsonlint.com/))
    - Restart Claude Desktop completely
    - Check for any error messages in Claude Desktop
+
+**3a. Cursor IDE doesn't see the MCP server**
+   - **Config File Location Issues**:
+     - Verify `mcp.json` is in the correct location:
+       - Global: `~/.cursor/mcp.json` (`%USERPROFILE%\.cursor\mcp.json` on Windows)
+       - Project: `.cursor/mcp.json` in your project root
+     - Ensure filename is exactly `mcp.json` (not `mcp.json.txt`)
+     - Check file permissions allow reading
+   
+   - **JSON Syntax Validation**:
+     - Use [jsonlint.com](https://jsonlint.com/) to validate JSON syntax
+     - Common issues: missing commas, incorrect quotes, trailing commas
+     - Ensure proper escaping of Windows paths: `"C:/Program Files/Google/Chrome/Application/chrome.exe"`
+   
+   - **Cursor IDE Restart Process**:
+     - Close Cursor IDE completely (check Task Manager on Windows)
+     - Wait 5 seconds
+     - Restart Cursor IDE
+     - Open Command Palette and check MCP servers are listed
+   
+   - **Environment Variables**:
+     - Verify Node.js is accessible: `node --version`
+     - Check PATH includes npm: `npm --version`
+     - Clear any conflicting environment variables
+   
+   - **Cursor IDE Version Compatibility**:
+     - Ensure Cursor IDE version supports MCP (latest versions)
+     - Update Cursor IDE if using an older version
+     - Check Cursor IDE documentation for MCP requirements
 
 4. **Permission denied errors**
    - On Linux/Mac: Try `sudo npm install -g puppeteer-real-browser-mcp-server`
