@@ -19,6 +19,19 @@ import * as net from 'net';
 let browserInstance: any = null;
 let pageInstance: any = null;
 
+// Content prioritization configuration
+interface ContentPriorityConfig {
+  prioritizeContent: boolean;
+  fallbackToScreenshots: boolean;
+  autoSuggestGetContent: boolean;
+}
+
+let contentPriorityConfig: ContentPriorityConfig = {
+  prioritizeContent: true,  // Default to prioritizing get_content
+  fallbackToScreenshots: false,  // Don't attempt screenshots unless explicitly requested
+  autoSuggestGetContent: true  // Provide guidance toward get_content
+};
+
 // Circuit breaker and recursion tracking
 interface CircuitBreakerState {
   failureCount: number;
@@ -1007,6 +1020,28 @@ const TOOLS = [
           },
           additionalProperties: true,
         },
+        contentPriority: {
+          type: 'object',
+          description: 'Configuration for prioritizing get_content over screenshots',
+          properties: {
+            prioritizeContent: {
+              type: 'boolean',
+              description: 'Prioritize get_content method over screenshots for better reliability',
+              default: true,
+            },
+            fallbackToScreenshots: {
+              type: 'boolean',
+              description: 'Allow fallback to screenshots when get_content is insufficient',
+              default: false,
+            },
+            autoSuggestGetContent: {
+              type: 'boolean',
+              description: 'Automatically suggest get_content alternatives when screenshots fail',
+              default: true,
+            },
+          },
+          additionalProperties: false,
+        },
       },
     },
   },
@@ -1032,7 +1067,8 @@ const TOOLS = [
   },
   {
     name: 'screenshot',
-    description: 'Take a screenshot of the current page',
+    description: 'Take a screenshot of the current page (Note: May fail on some configurations due to stack overflow issues. Consider using get_content for content analysis instead)',
+    deprecated: 'Consider using get_content for more reliable page analysis',
     inputSchema: {
       type: 'object',
       properties: {
@@ -1055,7 +1091,7 @@ const TOOLS = [
   },
   {
     name: 'get_content',
-    description: 'Get page content (HTML or text)',
+    description: '**Recommended** method to get page content (HTML or text) - More reliable than screenshots for content analysis and navigation tasks',
     inputSchema: {
       type: 'object',
       properties: {
@@ -1235,12 +1271,25 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
   switch (name) {
     case 'browser_init':
       return await withErrorHandling(async () => {
+        // Update content priority configuration if provided
+        if ((args as any).contentPriority) {
+          contentPriorityConfig = {
+            ...contentPriorityConfig,
+            ...(args as any).contentPriority
+          };
+        }
+        
         await initializeBrowser(args as any);
+        
+        const configMessage = contentPriorityConfig.prioritizeContent 
+          ? '\n\n💡 Content Priority Mode: get_content is prioritized for better reliability. Use get_content for page analysis instead of screenshots.'
+          : '';
+        
         return {
           content: [
             {
               type: 'text',
-              text: 'Browser initialized successfully with anti-detection features',
+              text: `Browser initialized successfully with anti-detection features${configMessage}`,
             },
           ],
         };
@@ -1267,6 +1316,19 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
 
     case 'screenshot':
       return await withErrorHandling(async () => {
+        // Check content priority configuration
+        if (contentPriorityConfig.prioritizeContent && !contentPriorityConfig.fallbackToScreenshots) {
+          const suggestion = contentPriorityConfig.autoSuggestGetContent 
+            ? '\n\n💡 Recommendation: Use get_content instead of screenshots for:\n' +
+              '  • get_content with type="text" for readable page content\n' +
+              '  • get_content with type="html" for DOM structure analysis\n' +
+              '  • More reliable and faster than screenshots for content analysis\n' +
+              '  • Enables all navigation and automation tasks without visual capture'
+            : '';
+          
+          throw new Error(`Screenshot disabled in content priority mode. ${suggestion}`);
+        }
+        
         return await withTimeout(async () => {
           return await withRetry(async () => {
             const { page } = await initializeBrowser();
@@ -1399,7 +1461,15 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
                       ],
                     };
                   } catch (lastResortError) {
-                    throw new Error(`Screenshot failed with stack overflow. Original error: ${error.message}. CDP fallback error: ${fallbackError instanceof Error ? fallbackError.message : String(fallbackError)}. Simple fallback error: ${lastResortError instanceof Error ? lastResortError.message : String(lastResortError)}`);
+                    const suggestion = contentPriorityConfig.autoSuggestGetContent 
+                      ? '\n\n💡 Alternative Solution: Use get_content instead of screenshots:\n' +
+                        '  • get_content with type="text" for readable content\n' +
+                        '  • get_content with type="html" for structure analysis\n' +
+                        '  • More reliable for automation and navigation tasks\n' +
+                        '  • No stack overflow issues'
+                      : '';
+                    
+                    throw new Error(`Screenshot failed with stack overflow. Original error: ${error.message}. CDP fallback error: ${fallbackError instanceof Error ? fallbackError.message : String(fallbackError)}. Simple fallback error: ${lastResortError instanceof Error ? lastResortError.message : String(lastResortError)}.${suggestion}`);
                   }
                 }
               }
@@ -1430,11 +1500,19 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
             : await page.content();
         }
 
+        const successMessage = contentPriorityConfig.autoSuggestGetContent && (args as any).type !== 'html' 
+          ? `\n\n✅ Content retrieved successfully! This method is more reliable than screenshots for:\n` +
+            `  • Navigation and automation tasks\n` +
+            `  • Content analysis and text extraction\n` +
+            `  • Finding elements and form fields\n` +
+            `  • No browser compatibility issues`
+          : '';
+
         return {
           content: [
             {
               type: 'text',
-              text: content,
+              text: content + successMessage,
             },
           ],
         };
