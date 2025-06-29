@@ -13,6 +13,7 @@ import { randomScroll } from './stealth-actions';
 import { setTimeout as sleep } from 'node:timers/promises';
 import * as fs from 'fs';
 import * as path from 'path';
+import * as net from 'net';
 
 // Store browser instance
 let browserInstance: any = null;
@@ -267,42 +268,140 @@ async function validateSession(): Promise<boolean> {
   }
 }
 
-// Chrome path detection for cross-platform support
+// Port availability and connection utilities for enhanced resilience
+async function isPortAvailable(port: number, host: string = '127.0.0.1'): Promise<boolean> {
+  return new Promise((resolve) => {
+    const server = net.createServer();
+    
+    server.listen(port, host, () => {
+      server.once('close', () => {
+        resolve(true);
+      });
+      server.close();
+    });
+    
+    server.on('error', () => {
+      resolve(false);
+    });
+  });
+}
+
+// Test localhost resolution and connectivity
+async function testHostConnectivity(): Promise<{ localhost: boolean; ipv4: boolean; recommendedHost: string }> {
+  const testPort = 19222; // Temporary test port
+  
+  try {
+    // Test localhost connectivity
+    const localhostAvailable = await isPortAvailable(testPort, 'localhost');
+    
+    // Test 127.0.0.1 connectivity  
+    const ipv4Available = await isPortAvailable(testPort, '127.0.0.1');
+    
+    return {
+      localhost: localhostAvailable,
+      ipv4: ipv4Available,
+      recommendedHost: ipv4Available ? '127.0.0.1' : 'localhost'
+    };
+  } catch (error) {
+    console.error('Host connectivity test failed:', error);
+    return {
+      localhost: false,
+      ipv4: true, // Default to 127.0.0.1 if test fails
+      recommendedHost: '127.0.0.1'
+    };
+  }
+}
+
+// Get available port in range
+async function findAvailablePort(startPort: number = 9222, endPort: number = 9322): Promise<number | null> {
+  for (let port = startPort; port <= endPort; port++) {
+    if (await isPortAvailable(port)) {
+      return port;
+    }
+  }
+  return null;
+}
+
+// Chrome path detection for cross-platform support with enhanced Windows support
 function detectChromePath(): string | null {
   const platform = process.platform;
+
+  // Check environment variables first
+  const envChromePath = process.env.CHROME_PATH || process.env.PUPPETEER_EXECUTABLE_PATH;
+  if (envChromePath && fs.existsSync(envChromePath)) {
+    console.error(`✓ Found Chrome via environment variable: ${envChromePath}`);
+    return envChromePath;
+  }
 
   let possiblePaths: string[] = [];
 
   switch (platform) {
     case 'win32':
+      // Enhanced Windows Chrome detection with more paths and fallbacks
       possiblePaths = [
+        // Standard installations
         'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe',
         'C:\\Program Files (x86)\\Google\\Chrome\\Application\\chrome.exe',
+        
+        // User-specific installations
         path.join(process.env.LOCALAPPDATA || '', 'Google\\Chrome\\Application\\chrome.exe'),
+        path.join(process.env.USERPROFILE || '', 'AppData\\Local\\Google\\Chrome\\Application\\chrome.exe'),
+        
+        // Environment-based paths
         path.join(process.env.PROGRAMFILES || '', 'Google\\Chrome\\Application\\chrome.exe'),
-        path.join(process.env['PROGRAMFILES(X86)'] || '', 'Google\\Chrome\\Application\\chrome.exe')
+        path.join(process.env['PROGRAMFILES(X86)'] || '', 'Google\\Chrome\\Application\\chrome.exe'),
+        
+        // Chrome Canary fallback
+        path.join(process.env.LOCALAPPDATA || '', 'Google\\Chrome SxS\\Application\\chrome.exe'),
+        'C:\\Program Files\\Google\\Chrome SxS\\Application\\chrome.exe',
+        
+        // Additional common locations
+        'C:\\Users\\Public\\Desktop\\Google Chrome.exe',
+        path.join(process.env.APPDATA || '', 'Google\\Chrome\\Application\\chrome.exe'),
+        'C:\\Chrome\\chrome.exe',
+        'C:\\google\\chrome\\chrome.exe',
+        
+        // Portable installations
+        'C:\\PortableApps\\GoogleChromePortable\\App\\Chrome-bin\\chrome.exe',
       ];
+
+      // Try Windows Registry detection
+      try {
+        const registryPath = getWindowsChromeFromRegistry();
+        if (registryPath) {
+          possiblePaths.unshift(registryPath); // Add to beginning for priority
+        }
+      } catch (error) {
+        console.error('Registry detection failed, continuing with file system search...');
+      }
       break;
+      
     case 'darwin':
       possiblePaths = [
         '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome',
-        '/Applications/Chromium.app/Contents/MacOS/Chromium'
+        '/Applications/Chromium.app/Contents/MacOS/Chromium',
+        '/Applications/Google Chrome Canary.app/Contents/MacOS/Google Chrome Canary'
       ];
       break;
+      
     case 'linux':
       possiblePaths = [
         '/usr/bin/google-chrome',
         '/usr/bin/google-chrome-stable',
         '/usr/bin/chromium-browser',
         '/usr/bin/chromium',
-        '/snap/bin/chromium'
+        '/snap/bin/chromium',
+        '/usr/bin/chrome',
+        '/opt/google/chrome/chrome'
       ];
       break;
+      
     default:
       console.error(`Platform ${platform} not explicitly supported for Chrome path detection`);
       return null;
   }
 
+  // Search through all possible paths
   for (const chromePath of possiblePaths) {
     try {
       if (fs.existsSync(chromePath)) {
@@ -317,20 +416,87 @@ function detectChromePath(): string | null {
   // Enhanced error message for Windows with specific troubleshooting steps
   if (platform === 'win32') {
     console.error(`❌ Chrome not found at any expected Windows paths:`);
-    console.error(`   Searched locations:`);
-    possiblePaths.forEach(path => console.error(`   - ${path}`));
-    console.error(`\n   📝 Windows Troubleshooting Steps:`);
-    console.error(`   1. Verify Chrome is installed: Download from https://www.google.com/chrome/`);
-    console.error(`   2. Check installation location manually in File Explorer`);
-    console.error(`   3. If Chrome is in a custom location, specify the path manually:`);
-    console.error(`      Ask Claude: "Initialize browser with custom Chrome path at C:\\Your\\Path\\chrome.exe"`);
-    console.error(`   4. Try running as Administrator if permission issues occur`);
-    console.error(`   5. Check Windows Defender isn't blocking Chrome execution`);
-    console.error(`   6. For Cursor IDE users: Add explicit Chrome path to MCP configuration`);
+    console.error(`   Searched ${possiblePaths.length} locations:`);
+    possiblePaths.slice(0, 8).forEach(path => console.error(`   - ${path}`)); // Show first 8 paths
+    if (possiblePaths.length > 8) {
+      console.error(`   ... and ${possiblePaths.length - 8} more locations`);
+    }
+    console.error(`\n   🔧 Windows Troubleshooting Solutions:`);
+    console.error(`   1. Environment Variables (Recommended):`);
+    console.error(`      - Set CHROME_PATH environment variable to your Chrome location`);
+    console.error(`      - Example: set CHROME_PATH="C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe"`);
+    console.error(`      - For Cursor IDE: Add env vars to MCP configuration`);
+    console.error(`\n   2. Chrome Installation:`);
+    console.error(`      - Download/reinstall Chrome: https://www.google.com/chrome/`);
+    console.error(`      - Check if Chrome is installed for all users vs current user only`);
+    console.error(`      - Try Chrome Canary if regular Chrome fails`);
+    console.error(`\n   3. Permissions & Security:`);
+    console.error(`      - Run IDE/terminal as Administrator`);
+    console.error(`      - Add Chrome to Windows Defender exclusions`);
+    console.error(`      - Check if antivirus software is blocking Chrome`);
+    console.error(`\n   4. Custom Configuration:`);
+    console.error(`      - Use customConfig.chromePath parameter in browser_init`);
+    console.error(`      - Example: {"customConfig": {"chromePath": "C:\\\\custom\\\\path\\\\chrome.exe"}}`);
   } else {
     console.error(`❌ Chrome not found at any expected paths for platform: ${platform}`);
     console.error(`   Searched locations:`);
     possiblePaths.forEach(path => console.error(`   - ${path}`));
+  }
+  
+  return null;
+}
+
+// Windows Registry Chrome detection
+function getWindowsChromeFromRegistry(): string | null {
+  if (process.platform !== 'win32') return null;
+  
+  try {
+    const { execSync } = require('child_process');
+    
+    // Query Windows Registry for Chrome installation path
+    const registryQueries = [
+      'reg query "HKEY_CURRENT_USER\\Software\\Google\\Chrome\\BLBeacon" /v version 2>nul',
+      'reg query "HKEY_LOCAL_MACHINE\\Software\\Google\\Chrome\\BLBeacon" /v version 2>nul',
+      'reg query "HKEY_LOCAL_MACHINE\\Software\\WOW6432Node\\Google\\Chrome\\BLBeacon" /v version 2>nul',
+    ];
+    
+    for (const query of registryQueries) {
+      try {
+        const result = execSync(query, { encoding: 'utf8', timeout: 5000 });
+        if (result) {
+          // If registry key exists, Chrome is likely installed in standard location
+          const standardPaths = [
+            'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe',
+            'C:\\Program Files (x86)\\Google\\Chrome\\Application\\chrome.exe'
+          ];
+          
+          for (const standardPath of standardPaths) {
+            if (fs.existsSync(standardPath)) {
+              console.error(`✓ Found Chrome via Registry detection: ${standardPath}`);
+              return standardPath;
+            }
+          }
+        }
+      } catch (error) {
+        // Continue to next registry query
+      }
+    }
+    
+    // Alternative: Query Chrome's installation directory directly
+    try {
+      const installDirQuery = 'reg query "HKEY_LOCAL_MACHINE\\Software\\Microsoft\\Windows\\CurrentVersion\\App Paths\\chrome.exe" /ve 2>nul';
+      const result = execSync(installDirQuery, { encoding: 'utf8', timeout: 5000 });
+      const match = result.match(/REG_SZ\s+(.+\.exe)/);
+      if (match && match[1] && fs.existsSync(match[1])) {
+        console.error(`✓ Found Chrome via App Paths registry: ${match[1]}`);
+        return match[1];
+      }
+    } catch (error) {
+      // Registry detection failed, will fall back to file system search
+    }
+    
+  } catch (error) {
+    console.error('Windows Registry Chrome detection failed:', error instanceof Error ? error.message : String(error));
   }
   
   return null;
@@ -368,25 +534,82 @@ async function initializeBrowser(options?: any) {
   // Detect Chrome path for cross-platform support
   const detectedChromePath = detectChromePath();
   const customConfig = options?.customConfig ?? {};
+  const platform = process.platform;
 
-  // Configure chrome-launcher options to prevent double browser launch
-  const chromeConfig = {
-    ignoreDefaultFlags: false,
-    chromeFlags: [
+  // Get platform-specific Chrome flags with enhanced Windows support
+  const getOptimalChromeFlags = (isWindows: boolean, isRetry: boolean = false): string[] => {
+    const baseFlags = [
       '--no-first-run',
       '--no-default-browser-check',
       '--disable-default-apps',
-      '--start-maximized',
       '--disable-blink-features=AutomationControlled',
-      // Additional flags to help with stack overflow issues
       '--disable-dev-shm-usage', // Overcome limited resource problems
-      '--no-sandbox', // Bypass OS security model, critical for Linux containers
       '--disable-setuid-sandbox',
-      '--disable-web-security', // Disable CORS
-      '--disable-features=VizDisplayCompositor', // Disable GPU compositing
-      '--max-old-space-size=4096', // Increase memory limit
-      '--stack-size=16000' // Increase stack size limit for Node.js
-    ],
+      '--disable-web-security', // Disable CORS for automation
+    ];
+
+    if (isWindows) {
+      // Enhanced Windows-specific flags for better compatibility
+      const windowsFlags = [
+        '--no-sandbox', // Critical for Windows environments
+        '--disable-gpu', // Prevent GPU-related crashes on Windows
+        '--disable-gpu-sandbox',
+        '--disable-software-rasterizer',
+        '--disable-background-timer-throttling',
+        '--disable-renderer-backgrounding',
+        '--disable-backgrounding-occluded-windows',
+        '--disable-features=TranslateUI,VizDisplayCompositor',
+        '--force-color-profile=srgb',
+        '--metrics-recording-only',
+        '--no-default-browser-check',
+        '--no-first-run',
+        '--mute-audio',
+        '--hide-scrollbars',
+        '--disable-component-update',
+        '--disable-background-networking',
+        '--disable-sync',
+        '--disable-translate',
+        '--disable-ipc-flooding-protection',
+        '--max-old-space-size=4096', // Increase memory limit
+        '--stack-size=16000', // Increase stack size for Node.js
+      ];
+
+      if (isRetry) {
+        // More aggressive flags for retry attempts
+        windowsFlags.push(
+          '--single-process', // Use single process (less stable but more compatible)
+          '--no-zygote', // Disable zygote process forking
+          '--disable-extensions', // Disable all extensions
+          '--disable-plugins', // Disable plugins
+          '--remote-debugging-port=0', // Let system assign random port
+        );
+      } else {
+        // Standard flags for first attempt
+        windowsFlags.push(
+          '--start-maximized',
+          '--disable-extensions-file-access-check',
+        );
+      }
+
+      return [...baseFlags, ...windowsFlags];
+    } else {
+      // Non-Windows flags
+      return [
+        ...baseFlags,
+        '--no-sandbox',
+        '--disable-features=VizDisplayCompositor',
+        '--start-maximized',
+      ];
+    }
+  };
+
+  // Check if this is a retry attempt (for fallback strategies)
+  const isRetryAttempt = options?._isRetryAttempt ?? false;
+
+  // Configure chrome-launcher options with platform-specific optimizations
+  const chromeConfig = {
+    ignoreDefaultFlags: false,
+    chromeFlags: getOptimalChromeFlags(platform === 'win32', isRetryAttempt),
     ...customConfig
   };
 
@@ -395,6 +618,7 @@ async function initializeBrowser(options?: any) {
     chromeConfig.chromePath = detectedChromePath;
   }
 
+  // Enhanced connection options with fallback support
   const connectOptions: any = {
     headless: options?.headless ?? false,
     customConfig: chromeConfig,
@@ -402,10 +626,10 @@ async function initializeBrowser(options?: any) {
     disableXvfb: options?.disableXvfb ?? true,
     connectOption: {
       defaultViewport: null,
+      timeout: platform === 'win32' ? 60000 : 30000, // Longer timeout for Windows
       ...(options?.connectOption ?? {}),
     },
   };
-
 
   if (options?.proxy) {
     connectOptions.customConfig.chromeFlags.push(`--proxy-server=${options.proxy}`);
@@ -415,57 +639,210 @@ async function initializeBrowser(options?: any) {
     connectOptions.plugins = options.plugins;
   }
 
+  // Test host connectivity for better connection resilience
+  console.error('🔍 Testing network connectivity...');
+  const hostTest = await testHostConnectivity();
+  console.error(`   localhost available: ${hostTest.localhost}`);
+  console.error(`   127.0.0.1 available: ${hostTest.ipv4}`);
+  console.error(`   recommended host: ${hostTest.recommendedHost}`);
+
+  // Find available debugging port
+  const availablePort = await findAvailablePort();
+  if (availablePort) {
+    console.error(`🔍 Found available debugging port: ${availablePort}`);
+  } else {
+    console.error('⚠️  No available ports found in range 9222-9322, using system-assigned port');
+  }
+
+  // Multiple connection attempts with fallback strategies and enhanced resilience
+  const createConnectionStrategy = (strategyName: string, modifications: any = {}) => {
+    const strategy = {
+      ...connectOptions,
+      ...modifications,
+      customConfig: {
+        ...chromeConfig,
+        ...modifications.customConfig,
+        chromeFlags: [
+          ...(modifications.customConfig?.chromeFlags || chromeConfig.chromeFlags),
+          // Add port-specific flags if we found an available port
+          ...(availablePort ? [`--remote-debugging-port=${availablePort}`] : ['--remote-debugging-port=0'])
+        ]
+      }
+    };
+    
+    return { strategyName, strategy };
+  };
+
+  const connectionStrategies = [
+    // Strategy 1: Standard connection with optimal port
+    createConnectionStrategy('Optimal Configuration', {}),
+    
+    // Strategy 2: Headless mode fallback
+    createConnectionStrategy('Headless Mode', { headless: true }),
+    
+    // Strategy 3: Windows-specific single process mode
+    ...(platform === 'win32' ? [
+      createConnectionStrategy('Single Process Mode', {
+        customConfig: {
+          chromeFlags: [...chromeConfig.chromeFlags, '--single-process', '--no-zygote']
+        }
+      })
+    ] : []),
+    
+    // Strategy 4: Network fallback with explicit localhost handling
+    createConnectionStrategy('Network Fallback', {
+      customConfig: {
+        chromeFlags: [
+          ...chromeConfig.chromeFlags,
+          '--disable-web-security',
+          '--disable-features=VizDisplayCompositor',
+          // Use recommended host for debugging
+          ...(hostTest.recommendedHost === '127.0.0.1' ? ['--remote-debugging-address=127.0.0.1'] : [])
+        ]
+      }
+    }),
+    
+    // Strategy 5: Minimal flags (last resort)
+    createConnectionStrategy('Minimal Configuration', {
+      customConfig: {
+        chromeFlags: [
+          '--no-sandbox', 
+          '--disable-dev-shm-usage', 
+          '--disable-setuid-sandbox',
+          '--remote-debugging-port=0'
+        ]
+      }
+    })
+  ];
+
+  let lastError: Error | null = null;
+
+  // Try each connection strategy with enhanced resilience
+  for (let strategyIndex = 0; strategyIndex < connectionStrategies.length; strategyIndex++) {
+    const { strategyName, strategy } = connectionStrategies[strategyIndex];
+    
     try {
-      const result = await connect(connectOptions);
+      console.error(`🔄 Attempting browser connection using ${strategyName}...`);
+      
+      // Enhanced connection attempt with localhost/IP fallback
+      const result = await withTimeout(async () => {
+        try {
+          // First attempt with the strategy as configured
+          return await connect(strategy);
+        } catch (connectionError) {
+          // Check if it's a connection-related error that might benefit from host fallback
+          const errorMsg = connectionError instanceof Error ? connectionError.message : String(connectionError);
+          
+          if (errorMsg.includes('ECONNREFUSED') || errorMsg.includes('localhost') || errorMsg.includes('127.0.0.1')) {
+            console.error(`   Connection error detected, trying host fallback...`);
+            
+            // Create fallback strategy with different debugging address
+            const fallbackHost = hostTest.recommendedHost === '127.0.0.1' ? 'localhost' : '127.0.0.1';
+            const fallbackStrategy = {
+              ...strategy,
+              customConfig: {
+                ...strategy.customConfig,
+                chromeFlags: [
+                  ...strategy.customConfig.chromeFlags.filter((flag: string) => !flag.includes('remote-debugging-address')),
+                  `--remote-debugging-address=${fallbackHost}`
+                ]
+              }
+            };
+            
+            console.error(`   Trying fallback with --remote-debugging-address=${fallbackHost}...`);
+            return await connect(fallbackStrategy);
+          }
+          
+          // Re-throw if not a connection error we can handle
+          throw connectionError;
+        }
+      }, platform === 'win32' ? 120000 : 90000, `browser-connection-${strategyName.toLowerCase().replace(/\s+/g, '-')}`);
+      
       const { browser, page } = result;
 
       browserInstance = browser;
       pageInstance = page;
 
-      // Viewport is now set to null for maximized window behavior
-      console.error(`✓ Browser initialized successfully`);
+      console.error(`✅ Browser initialized successfully using ${strategyName}`);
       updateCircuitBreakerOnSuccess();
       return { browser, page };
+      
     } catch (error) {
-      updateCircuitBreakerOnFailure();
+      lastError = error instanceof Error ? error : new Error(String(error));
+      console.error(`❌ ${strategyName} failed:`, lastError.message);
       
-      // Enhanced error handling for browser launch failures
-      const errorMessage = error instanceof Error ? error.message : String(error);
-      
-      if (errorMessage.includes('ENOENT') || errorMessage.includes('spawn') || errorMessage.includes('chrome')) {
-        const platform = process.platform;
-        
-        if (platform === 'win32') {
-          console.error(`❌ Browser launch failed on Windows:`);
-          console.error(`   Error: ${errorMessage}`);
-          console.error(`\n   🔧 Windows-Specific Solutions:`);
-          console.error(`   1. Chrome Path Issues:`);
-          console.error(`      - Chrome might not be installed or in an unexpected location`);
-          console.error(`      - Try specifying custom Chrome path: customConfig.chromePath`);
-          console.error(`      - Example: {"customConfig": {"chromePath": "C:\\\\Program Files\\\\Google\\\\Chrome\\\\Application\\\\chrome.exe"}}`);
-          console.error(`\n   2. Permission Issues:`);
-          console.error(`      - Run Cursor IDE or your terminal as Administrator`);
-          console.error(`      - Check User Account Control (UAC) settings`);
-          console.error(`\n   3. Security Software:`);
-          console.error(`      - Add Chrome and Node.js to Windows Defender exclusions`);
-          console.error(`      - Temporarily disable antivirus to test`);
-          console.error(`\n   4. Chrome Process Issues:`);
-          console.error(`      - Kill any existing Chrome processes in Task Manager`);
-          console.error(`      - Try headless mode: {"headless": true}`);
-          console.error(`\n   5. Cursor IDE Configuration:`);
-          console.error(`      - Add Chrome path to MCP configuration env variables`);
-          console.error(`      - Use PUPPETEER_LAUNCH_OPTIONS environment variable`);
-        } else {
-          console.error(`❌ Browser launch failed on ${platform}:`);
-          console.error(`   Error: ${errorMessage}`);
-        }
-        
-        throw new Error(`Browser initialization failed: ${errorMessage}. See console for platform-specific troubleshooting steps.`);
+      // Enhanced error categorization for better troubleshooting
+      if (lastError.message.includes('ECONNREFUSED')) {
+        console.error(`   🔍 ECONNREFUSED detected - likely Chrome connection/port issue`);
+      } else if (lastError.message.includes('ENOENT') || lastError.message.includes('spawn')) {
+        console.error(`   🔍 Chrome executable issue detected`);
+      } else if (lastError.message.includes('timeout')) {
+        console.error(`   🔍 Connection timeout - Chrome may be slow to start`);
       }
       
-      // Re-throw other types of errors
-      throw error;
+      // Add progressive delay between retry attempts
+      if (strategyIndex < connectionStrategies.length - 1) {
+        const delayMs = 2000 + (strategyIndex * 1000); // 2s, 3s, 4s, etc.
+        console.error(`⏳ Waiting ${delayMs/1000} seconds before trying next strategy...`);
+        await new Promise(resolve => setTimeout(resolve, delayMs));
+      }
     }
+  }
+
+  // All strategies failed
+  updateCircuitBreakerOnFailure();
+  
+  // Enhanced error handling for browser launch failures
+  const errorMessage = lastError ? lastError.message : 'Unknown connection error';
+  
+  if (errorMessage.includes('ENOENT') || errorMessage.includes('spawn') || errorMessage.includes('chrome') || errorMessage.includes('ECONNREFUSED')) {
+    if (platform === 'win32') {
+      console.error(`❌ All browser connection strategies failed on Windows:`);
+      console.error(`   Final Error: ${errorMessage}`);
+      console.error(`\n   🔧 Enhanced Windows Troubleshooting Solutions:`);
+      
+      if (errorMessage.includes('ECONNREFUSED')) {
+        console.error(`\n   🚨 ECONNREFUSED Error Specific Solutions:`);
+        console.error(`   1. Port/Connection Issues:`);
+        console.error(`      - Chrome DevTools Protocol port is being blocked`);
+        console.error(`      - Add Chrome to Windows Firewall exceptions`);
+        console.error(`      - Check if localhost resolves to 127.0.0.1 (run: ping localhost)`);
+        console.error(`      - Try different Chrome flags: --remote-debugging-port=0`);
+        console.error(`\n   2. Network Configuration:`);
+        console.error(`      - Disable VPN/proxy temporarily`);
+        console.error(`      - Check Windows hosts file (C:\\Windows\\System32\\drivers\\etc\\hosts)`);
+        console.error(`      - Ensure localhost points to 127.0.0.1`);
+        console.error(`\n   3. Chrome Process Management:`);
+        console.error(`      - Kill all chrome.exe processes in Task Manager`);
+        console.error(`      - Clear Chrome user data: %LOCALAPPDATA%\\Google\\Chrome\\User Data`);
+        console.error(`      - Try running Chrome manually to test: chrome.exe --remote-debugging-port=9222`);
+      }
+      
+      console.error(`\n   🔧 General Solutions:`);
+      console.error(`   1. Environment Variables (Recommended):`);
+      console.error(`      - Set CHROME_PATH environment variable`);
+      console.error(`      - Example: set CHROME_PATH="C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe"`);
+      console.error(`\n   2. Chrome Installation:`);
+      console.error(`      - Download/reinstall Chrome: https://www.google.com/chrome/`);
+      console.error(`      - Try Chrome Canary: https://www.google.com/chrome/canary/`);
+      console.error(`\n   3. Permissions & Security:`);
+      console.error(`      - Run as Administrator`);
+      console.error(`      - Add Chrome to Windows Defender exclusions`);
+      console.error(`      - Temporarily disable antivirus software`);
+      console.error(`\n   4. Advanced Configuration:`);
+      console.error(`      - Use customConfig.chromePath in browser_init`);
+      console.error(`      - Try headless mode: {"headless": true}`);
+      console.error(`      - Use environment variable: PUPPETEER_EXECUTABLE_PATH`);
+    } else {
+      console.error(`❌ Browser launch failed on ${platform}:`);
+      console.error(`   Error: ${errorMessage}`);
+    }
+    
+    throw new Error(`Browser initialization failed after trying all strategies: ${errorMessage}. See console for platform-specific troubleshooting steps.`);
+  }
+  
+  // Re-throw other types of errors
+  throw lastError || new Error('Unknown browser initialization error');
   } finally {
     browserInitDepth--;
   }
@@ -732,7 +1109,7 @@ server.setRequestHandler(InitializeRequestSchema, async (request) => ({
   },
   serverInfo: {
     name: 'puppeteer-real-browser-mcp-server',
-    version: '1.2.0',
+    version: '1.3.0',
   },
 }));
 

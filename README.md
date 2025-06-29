@@ -110,6 +110,10 @@ assistants to control a real browser, take screenshots, extract content, and mor
 ## Features
 
 - **Stealth by default**: All browser instances use anti-detection features
+- **Enhanced Windows support**: Comprehensive Chrome detection and ECONNREFUSED error fixes (v1.3.0)
+- **Smart Chrome detection**: Registry-based detection + 15+ installation paths (Windows)
+- **Connection resilience**: Automatic localhost/127.0.0.1 fallback with port management
+- **Multiple retry strategies**: 5 different connection approaches with progressive fallback
 - **Advanced configuration**: Full support for all puppeteer-real-browser options
 - **Dynamic selector discovery**: Intelligent element finding without hardcoded selectors
 - **Random scrolling**: Tools for natural scrolling to avoid detection
@@ -119,6 +123,7 @@ assistants to control a real browser, take screenshots, extract content, and mor
 - **Robust error handling**: Advanced error recovery with circuit breaker pattern
 - **Stack overflow protection**: Comprehensive protection against infinite recursion
 - **Timeout controls**: Automatic timeout mechanisms prevent hanging operations
+- **Platform optimization**: Windows-specific flags and longer timeouts for better compatibility
 
 ## Prerequisites
 
@@ -130,10 +135,13 @@ assistants to control a real browser, take screenshots, extract content, and mor
 ### Platform-Specific Requirements
 
 **Windows:**
-- Google Chrome must be installed in one of the standard locations:
-  - `C:\Program Files\Google\Chrome\Application\chrome.exe`
-  - `C:\Program Files (x86)\Google\Chrome\Application\chrome.exe`
-  - `%LOCALAPPDATA%\Google\Chrome\Application\chrome.exe`
+- Google Chrome installation (automatic detection in v1.3.0+ includes):
+  - Standard installations: `C:\Program Files\Google\Chrome\Application\chrome.exe`
+  - 32-bit installations: `C:\Program Files (x86)\Google\Chrome\Application\chrome.exe`
+  - User installations: `%LOCALAPPDATA%\Google\Chrome\Application\chrome.exe`
+  - Chrome Canary: `%LOCALAPPDATA%\Google\Chrome SxS\Application\chrome.exe`
+  - Portable installations and Registry-detected paths
+  - Manual path specification: Use `CHROME_PATH` environment variable
 
 **macOS:**
 - Google Chrome or Chromium must be installed in `/Applications/`
@@ -454,15 +462,27 @@ puppeteer-real-browser implementation.
 
 ## Configuration
 
-### Automatic Chrome Path Detection
+### Automatic Chrome Path Detection (Enhanced in v1.3.0)
 
-The server automatically detects Chrome installation paths across different operating systems:
+The server automatically detects Chrome installation paths across different operating systems with significantly improved Windows support:
 
-- **Windows**: Searches common installation directories including Program Files and user-specific locations
-- **macOS**: Looks for Chrome in `/Applications/Google Chrome.app/`
+- **Windows (v1.3.0+)**: 
+  - Registry-based detection for installed Chrome versions
+  - Searches 15+ common installation directories including Program Files, user-specific locations, and portable installations
+  - Support for Chrome Canary fallback
+  - Environment variable detection (`CHROME_PATH`, `PUPPETEER_EXECUTABLE_PATH`)
+  - Detailed troubleshooting guidance when Chrome is not found
+  
+- **macOS**: Looks for Chrome in `/Applications/Google Chrome.app/` and Chrome Canary locations
+
 - **Linux**: Checks multiple locations including `/usr/bin/google-chrome`, `/usr/bin/chromium-browser`, and snap installations
 
-If Chrome is not found automatically, you can specify a custom path using the `customConfig.chromePath` option when initializing the browser.
+**Windows Registry Detection** (NEW in v1.3.0):
+The server now queries Windows Registry to find Chrome installations, making detection more reliable across different installation types.
+
+If Chrome is not found automatically, you can specify a custom path using:
+1. Environment variable: `set CHROME_PATH="C:\Your\Chrome\Path\chrome.exe"`
+2. Browser init option: `customConfig.chromePath` when initializing the browser
 
 ### Configuring Custom Options (like headless mode)
 Custom options like headless mode are **not configured in the MCP config file**. Instead, they're passed when initializing the browser using the `browser_init` tool:
@@ -558,6 +578,59 @@ For advanced users, you can modify the server behavior by editing the source cod
 - Enable debug logging
 
 ## Troubleshooting
+
+### Major Windows Connection Issues (Fixed in v1.3.0)
+
+**🔧 ECONNREFUSED Error Solutions**
+
+Version 1.3.0 includes comprehensive fixes for the `connect ECONNREFUSED 127.0.0.1:60725` error commonly experienced on Windows systems:
+
+**Enhanced Chrome Path Detection:**
+- Added Windows Registry-based Chrome detection
+- Expanded search to 15+ Windows installation locations including portable installations
+- Added support for Chrome Canary fallback
+- Environment variable support (`CHROME_PATH`, `PUPPETEER_EXECUTABLE_PATH`)
+
+**Windows-Specific Launch Optimizations:**
+- 20+ Windows-specific Chrome flags for better compatibility
+- Multiple fallback strategies (5 different connection approaches)
+- Progressive retry logic with exponential backoff
+- Enhanced timeout handling (120s for Windows vs 90s for other platforms)
+
+**Connection Resilience Features:**
+- Localhost vs 127.0.0.1 fallback handling (fixes known Puppeteer issue)
+- Port availability checking and automatic port assignment
+- Network connectivity testing before browser launch
+- Enhanced error categorization and automatic fallback strategies
+
+**If you're still experiencing ECONNREFUSED errors:**
+
+1. **Environment Variables (Recommended):**
+   ```bash
+   set CHROME_PATH="C:\Program Files\Google\Chrome\Application\chrome.exe"
+   ```
+
+2. **Manual Chrome Path Configuration:**
+   ```text
+   Ask Claude: "Initialize browser with custom Chrome path at C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe"
+   ```
+
+3. **Network Troubleshooting:**
+   ```bash
+   # Test localhost resolution
+   ping localhost
+   # Should resolve to 127.0.0.1
+   
+   # Check Windows hosts file
+   notepad C:\Windows\System32\drivers\etc\hosts
+   # Ensure: 127.0.0.1 localhost
+   ```
+
+4. **Chrome Process Management:**
+   ```bash
+   # Kill existing Chrome processes
+   taskkill /f /im chrome.exe
+   ```
 
 ### Common Issues
 
@@ -701,15 +774,30 @@ A: Yes, through the `plugins` option in browser_init.
 A: Yes, tested on Windows, macOS, and Linux. The server automatically detects Chrome installations on all platforms.
 
 **Q: What if Chrome is installed in a non-standard location?**
-A: Use the `customConfig.chromePath` option to specify the exact path to your Chrome executable. For example: `{"customConfig": {"chromePath": "C:\\Custom\\Chrome\\chrome.exe"}}`
+A: Version 1.3.0 dramatically improves Chrome detection. The server now searches 15+ locations including portable installations and uses Windows Registry detection. If Chrome is still not found automatically, you can:
+1. Set environment variable: `set CHROME_PATH="C:\Your\Chrome\Path\chrome.exe"`
+2. Use the `customConfig.chromePath` option: `{"customConfig": {"chromePath": "C:\\Custom\\Chrome\\chrome.exe"}}`
 
-**Q: Why am I getting "Chrome not found" errors on Windows?**
-A: Make sure Chrome is installed in one of these locations:
+**Q: Why am I getting "Chrome not found" or ECONNREFUSED errors on Windows?**
+A: Version 1.3.0 includes comprehensive fixes for Windows Chrome detection and connection issues. The server now automatically searches these locations and more:
 - `C:\Program Files\Google\Chrome\Application\chrome.exe`
-- `C:\Program Files (x86)\Google\Chrome\Application\chrome.exe`
+- `C:\Program Files (x86)\Google\Chrome\Application\chrome.exe` 
 - `%LOCALAPPDATA%\Google\Chrome\Application\chrome.exe`
+- `%USERPROFILE%\AppData\Local\Google\Chrome\Application\chrome.exe`
+- Chrome Canary installations
+- Portable Chrome installations
+- Registry-detected installations
 
-If installed elsewhere, specify the path manually using `customConfig.chromePath`.
+The server also implements multiple connection strategies with automatic fallback between localhost and 127.0.0.1, plus enhanced Windows-specific Chrome flags for better compatibility.
+
+**Q: I'm still getting ECONNREFUSED errors after upgrading to v1.3.0. What should I do?**
+A: Try these steps in order:
+1. Set the `CHROME_PATH` environment variable to your Chrome location
+2. Kill all existing Chrome processes: `taskkill /f /im chrome.exe`
+3. Check your Windows hosts file contains: `127.0.0.1 localhost`
+4. Try running your IDE as Administrator
+5. Add Chrome to Windows Defender exclusions
+6. If using a VPN/proxy, try disabling it temporarily
 
 ### Debug Mode
 
