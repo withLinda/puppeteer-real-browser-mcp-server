@@ -103,7 +103,7 @@ class Phase2BrowserTests {
       if (screenshotResult?.content && screenshotResult.content.length > 0) {
         this.logger.logTest('Phase 2', 'Screenshot Capture', 'passed', {
           duration: `${screenshotDuration}ms`,
-          imageSize: screenshotResult.screenshot.length
+          imageSize: screenshotResult.content[0]?.data?.length || 'unknown'
         });
       } else {
         this.logger.logTest('Phase 2', 'Screenshot Capture', 'failed', {
@@ -117,9 +117,10 @@ class Phase2BrowserTests {
       });
       
       if (contentResult?.content && contentResult.content.length > 0) {
+        const textContent = contentResult.content[0]?.text || '';
         this.logger.logTest('Phase 2', 'Get Page Content', 'passed', {
-          contentLength: contentResult.content.length,
-          hasExampleText: contentResult.content.includes('Example Domain')
+          contentLength: textContent.length,
+          hasExampleText: textContent.includes('Example Domain')
         });
       } else {
         this.logger.logTest('Phase 2', 'Get Page Content', 'failed', {

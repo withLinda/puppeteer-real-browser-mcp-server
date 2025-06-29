@@ -135,10 +135,29 @@ class MCPTestClient {
   }
 
   async callTool(toolName, args = {}) {
-    return this.sendRequest('tools/call', {
-      name: toolName,
-      arguments: args
-    });
+    try {
+      const result = await this.sendRequest('tools/call', {
+        name: toolName,
+        arguments: args
+      });
+      
+      // Transform MCP response to expected test format
+      if (result && result.content) {
+        return {
+          success: true,
+          content: result.content,
+          message: result.content[0]?.text || 'Operation completed'
+        };
+      }
+      
+      return { success: false, error: 'No valid response received' };
+    } catch (error) {
+      return { 
+        success: false, 
+        error: error.message || 'Unknown error',
+        originalError: error
+      };
+    }
   }
 
   async listTools() {
