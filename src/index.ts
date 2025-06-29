@@ -18,6 +18,24 @@ import * as path from 'path';
 let browserInstance: any = null;
 let pageInstance: any = null;
 
+// Circuit breaker and recursion tracking
+interface CircuitBreakerState {
+  failureCount: number;
+  lastFailureTime: number;
+  state: 'closed' | 'open' | 'half-open';
+}
+
+let browserCircuitBreaker: CircuitBreakerState = {
+  failureCount: 0,
+  lastFailureTime: 0,
+  state: 'closed'
+};
+
+let currentRetryDepth = 0;
+const MAX_RETRY_DEPTH = 3;
+const CIRCUIT_BREAKER_THRESHOLD = 5;
+const CIRCUIT_BREAKER_TIMEOUT = 30000; // 30 seconds
+
 // Initialize MCP server
 const server = new Server(
   {
@@ -82,79 +100,170 @@ function categorizeError(error: Error): BrowserErrorType {
   return BrowserErrorType.UNKNOWN;
 }
 
+// Timeout wrapper for operations that may hang
+async function withTimeout<T>(
+  operation: () => Promise<T>,
+  timeoutMs: number,
+  context: string = 'unknown'
+): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    const timer = setTimeout(() => {
+      reject(new Error(`Operation timed out after ${timeoutMs}ms in context: ${context}`));
+    }, timeoutMs);
+
+    operation()
+      .then((result) => {
+        clearTimeout(timer);
+        resolve(result);
+      })
+      .catch((error) => {
+        clearTimeout(timer);
+        reject(error);
+      });
+  });
+}
+
+// Circuit breaker functions
+function updateCircuitBreakerOnFailure(): void {
+  browserCircuitBreaker.failureCount++;
+  browserCircuitBreaker.lastFailureTime = Date.now();
+  
+  if (browserCircuitBreaker.failureCount >= CIRCUIT_BREAKER_THRESHOLD) {
+    browserCircuitBreaker.state = 'open';
+    console.error(`Circuit breaker opened after ${browserCircuitBreaker.failureCount} failures`);
+  }
+}
+
+function updateCircuitBreakerOnSuccess(): void {
+  browserCircuitBreaker.failureCount = 0;
+  browserCircuitBreaker.state = 'closed';
+}
+
+function isCircuitBreakerOpen(): boolean {
+  if (browserCircuitBreaker.state === 'closed') {
+    return false;
+  }
+  
+  if (browserCircuitBreaker.state === 'open') {
+    const timeSinceLastFailure = Date.now() - browserCircuitBreaker.lastFailureTime;
+    if (timeSinceLastFailure > CIRCUIT_BREAKER_TIMEOUT) {
+      browserCircuitBreaker.state = 'half-open';
+      console.error('Circuit breaker entering half-open state');
+      return false;
+    }
+    return true;
+  }
+  
+  return false; // half-open state allows one attempt
+}
+
 // Retry wrapper for operations that may fail due to browser issues
 async function withRetry<T>(
   operation: () => Promise<T>,
   maxRetries: number = 3,
-  delay: number = 1000
+  delay: number = 1000,
+  context: string = 'unknown'
 ): Promise<T> {
+  // Check recursion depth to prevent infinite loops
+  if (currentRetryDepth >= MAX_RETRY_DEPTH) {
+    throw new Error(`Maximum recursion depth (${MAX_RETRY_DEPTH}) exceeded in withRetry for context: ${context}. This prevents infinite loops.`);
+  }
+
+  // Check circuit breaker
+  if (isCircuitBreakerOpen()) {
+    throw new Error(`Circuit breaker is open. Browser operations are temporarily disabled to prevent cascade failures. Wait ${CIRCUIT_BREAKER_TIMEOUT}ms before retrying.`);
+  }
+
+  currentRetryDepth++;
   let lastError: Error;
 
-  for (let attempt = 1; attempt <= maxRetries; attempt++) {
-    try {
-      return await operation();
-    } catch (error) {
-      lastError = error instanceof Error ? error : new Error(String(error));
-      const errorType = categorizeError(lastError);
+  try {
+    for (let attempt = 1; attempt <= maxRetries; attempt++) {
+      try {
+        const result = await operation();
+        updateCircuitBreakerOnSuccess();
+        return result;
+      } catch (error) {
+        lastError = error instanceof Error ? error : new Error(String(error));
+        const errorType = categorizeError(lastError);
 
-      console.error(`Attempt ${attempt}/${maxRetries} failed (${errorType}):`, lastError.message);
+        console.error(`Attempt ${attempt}/${maxRetries} failed (${errorType}) in context ${context}:`, lastError.message);
 
-      // Check if this is a recoverable error
-      const recoverableErrors = [
-        BrowserErrorType.FRAME_DETACHED,
-        BrowserErrorType.SESSION_CLOSED,
-        BrowserErrorType.TARGET_CLOSED,
-        BrowserErrorType.PROTOCOL_ERROR,
-        BrowserErrorType.NAVIGATION_TIMEOUT
-      ];
+        // Check if this is a recoverable error
+        const recoverableErrors = [
+          BrowserErrorType.FRAME_DETACHED,
+          BrowserErrorType.SESSION_CLOSED,
+          BrowserErrorType.TARGET_CLOSED,
+          BrowserErrorType.PROTOCOL_ERROR,
+          BrowserErrorType.NAVIGATION_TIMEOUT
+        ];
 
-      const isRecoverable = recoverableErrors.includes(errorType);
+        const isRecoverable = recoverableErrors.includes(errorType);
 
-      if (!isRecoverable || attempt === maxRetries) {
-        // For element not found errors, provide helpful message
-        if (errorType === BrowserErrorType.ELEMENT_NOT_FOUND) {
-          throw new Error(`Element not found after ${maxRetries} attempts. Please verify the selector is correct and the element exists on the page.`);
+        if (!isRecoverable || attempt === maxRetries) {
+          // For element not found errors, provide helpful message
+          if (errorType === BrowserErrorType.ELEMENT_NOT_FOUND) {
+            throw new Error(`Element not found after ${maxRetries} attempts. Please verify the selector is correct and the element exists on the page.`);
+          }
+          break;
         }
-        break;
-      }
 
-      // Wait before retry with exponential backoff
-      const waitTime = delay * Math.pow(2, attempt - 1); // Exponential backoff
-      await new Promise(resolve => setTimeout(resolve, waitTime));
+        // Wait before retry with exponential backoff
+        const waitTime = delay * Math.pow(2, attempt - 1);
+        await new Promise(resolve => setTimeout(resolve, waitTime));
 
-      // Browser recovery for session-related errors
-      if ([BrowserErrorType.SESSION_CLOSED, BrowserErrorType.TARGET_CLOSED, BrowserErrorType.FRAME_DETACHED].includes(errorType)) {
-        console.error('Attempting browser recovery...');
-        try {
-          await closeBrowser();
-          await new Promise(resolve => setTimeout(resolve, 2000)); // Wait 2s before reinit
-        } catch (e) {
-          console.error('Error during browser cleanup:', e);
+        // Browser recovery for session-related errors (but avoid nested browser init)
+        if ([BrowserErrorType.SESSION_CLOSED, BrowserErrorType.TARGET_CLOSED, BrowserErrorType.FRAME_DETACHED].includes(errorType)) {
+          console.error('Attempting browser cleanup (without reinit to avoid recursion)...');
+          try {
+            await closeBrowser();
+            await new Promise(resolve => setTimeout(resolve, 2000)); 
+          } catch (e) {
+            console.error('Error during browser cleanup:', e);
+          }
         }
       }
     }
-  }
 
-  throw lastError!;
+    updateCircuitBreakerOnFailure();
+    throw lastError!;
+  } finally {
+    currentRetryDepth--;
+  }
 }
 
 // Session validation utility
+let sessionValidationInProgress = false;
+
 async function validateSession(): Promise<boolean> {
+  // Prevent concurrent session validation to avoid recursion
+  if (sessionValidationInProgress) {
+    console.warn('Session validation already in progress, skipping duplicate validation');
+    return false;
+  }
+
   if (!browserInstance || !pageInstance) {
     return false;
   }
 
-  try {
-    // Test if browser is still connected
-    await browserInstance.version();
+  sessionValidationInProgress = true;
 
-    // Test if page is still active
-    await pageInstance.evaluate(() => true);
+  try {
+    // Add timeout to session validation to prevent hanging
+    await withTimeout(async () => {
+      // Test if browser is still connected
+      await browserInstance.version();
+
+      // Test if page is still active  
+      await pageInstance.evaluate(() => true);
+    }, 5000, 'session-validation');
 
     return true;
   } catch (error) {
     console.error('Session validation failed:', error);
     return false;
+  } finally {
+    sessionValidationInProgress = false;
   }
 }
 
@@ -228,17 +337,33 @@ function detectChromePath(): string | null {
 }
 
 // Browser lifecycle management
+let browserInitDepth = 0;
+const MAX_BROWSER_INIT_DEPTH = 2;
+
 async function initializeBrowser(options?: any) {
-  // Check if existing instances are still valid
-  if (browserInstance && pageInstance) {
-    const isValid = await validateSession();
-    if (isValid) {
-      return { browser: browserInstance, page: pageInstance };
-    } else {
-      console.error('Existing session is invalid, reinitializing browser...');
-      await closeBrowser();
-    }
+  // Check recursion depth for browser initialization
+  if (browserInitDepth >= MAX_BROWSER_INIT_DEPTH) {
+    throw new Error(`Maximum browser initialization depth (${MAX_BROWSER_INIT_DEPTH}) exceeded. This prevents infinite initialization loops.`);
   }
+
+  // Check circuit breaker for browser operations
+  if (isCircuitBreakerOpen()) {
+    throw new Error(`Circuit breaker is open. Browser initialization is temporarily disabled. Wait ${CIRCUIT_BREAKER_TIMEOUT}ms before retrying.`);
+  }
+
+  browserInitDepth++;
+  
+  try {
+    // Check if existing instances are still valid
+    if (browserInstance && pageInstance) {
+      const isValid = await validateSession();
+      if (isValid) {
+        return { browser: browserInstance, page: pageInstance };
+      } else {
+        console.error('Existing session is invalid, reinitializing browser...');
+        await closeBrowser();
+      }
+    }
 
   // Detect Chrome path for cross-platform support
   const detectedChromePath = detectChromePath();
@@ -282,53 +407,59 @@ async function initializeBrowser(options?: any) {
     connectOptions.plugins = options.plugins;
   }
 
-  try {
-    const result = await connect(connectOptions);
-    const { browser, page } = result;
+    try {
+      const result = await connect(connectOptions);
+      const { browser, page } = result;
 
-    browserInstance = browser;
-    pageInstance = page;
+      browserInstance = browser;
+      pageInstance = page;
 
-    // Viewport is now set to null for maximized window behavior
-    console.error(`✓ Browser initialized successfully`);
-    return { browser, page };
-  } catch (error) {
-    // Enhanced error handling for browser launch failures
-    const errorMessage = error instanceof Error ? error.message : String(error);
-    
-    if (errorMessage.includes('ENOENT') || errorMessage.includes('spawn') || errorMessage.includes('chrome')) {
-      const platform = process.platform;
+      // Viewport is now set to null for maximized window behavior
+      console.error(`✓ Browser initialized successfully`);
+      updateCircuitBreakerOnSuccess();
+      return { browser, page };
+    } catch (error) {
+      updateCircuitBreakerOnFailure();
       
-      if (platform === 'win32') {
-        console.error(`❌ Browser launch failed on Windows:`);
-        console.error(`   Error: ${errorMessage}`);
-        console.error(`\n   🔧 Windows-Specific Solutions:`);
-        console.error(`   1. Chrome Path Issues:`);
-        console.error(`      - Chrome might not be installed or in an unexpected location`);
-        console.error(`      - Try specifying custom Chrome path: customConfig.chromePath`);
-        console.error(`      - Example: {"customConfig": {"chromePath": "C:\\\\Program Files\\\\Google\\\\Chrome\\\\Application\\\\chrome.exe"}}`);
-        console.error(`\n   2. Permission Issues:`);
-        console.error(`      - Run Cursor IDE or your terminal as Administrator`);
-        console.error(`      - Check User Account Control (UAC) settings`);
-        console.error(`\n   3. Security Software:`);
-        console.error(`      - Add Chrome and Node.js to Windows Defender exclusions`);
-        console.error(`      - Temporarily disable antivirus to test`);
-        console.error(`\n   4. Chrome Process Issues:`);
-        console.error(`      - Kill any existing Chrome processes in Task Manager`);
-        console.error(`      - Try headless mode: {"headless": true}`);
-        console.error(`\n   5. Cursor IDE Configuration:`);
-        console.error(`      - Add Chrome path to MCP configuration env variables`);
-        console.error(`      - Use PUPPETEER_LAUNCH_OPTIONS environment variable`);
-      } else {
-        console.error(`❌ Browser launch failed on ${platform}:`);
-        console.error(`   Error: ${errorMessage}`);
+      // Enhanced error handling for browser launch failures
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      
+      if (errorMessage.includes('ENOENT') || errorMessage.includes('spawn') || errorMessage.includes('chrome')) {
+        const platform = process.platform;
+        
+        if (platform === 'win32') {
+          console.error(`❌ Browser launch failed on Windows:`);
+          console.error(`   Error: ${errorMessage}`);
+          console.error(`\n   🔧 Windows-Specific Solutions:`);
+          console.error(`   1. Chrome Path Issues:`);
+          console.error(`      - Chrome might not be installed or in an unexpected location`);
+          console.error(`      - Try specifying custom Chrome path: customConfig.chromePath`);
+          console.error(`      - Example: {"customConfig": {"chromePath": "C:\\\\Program Files\\\\Google\\\\Chrome\\\\Application\\\\chrome.exe"}}`);
+          console.error(`\n   2. Permission Issues:`);
+          console.error(`      - Run Cursor IDE or your terminal as Administrator`);
+          console.error(`      - Check User Account Control (UAC) settings`);
+          console.error(`\n   3. Security Software:`);
+          console.error(`      - Add Chrome and Node.js to Windows Defender exclusions`);
+          console.error(`      - Temporarily disable antivirus to test`);
+          console.error(`\n   4. Chrome Process Issues:`);
+          console.error(`      - Kill any existing Chrome processes in Task Manager`);
+          console.error(`      - Try headless mode: {"headless": true}`);
+          console.error(`\n   5. Cursor IDE Configuration:`);
+          console.error(`      - Add Chrome path to MCP configuration env variables`);
+          console.error(`      - Use PUPPETEER_LAUNCH_OPTIONS environment variable`);
+        } else {
+          console.error(`❌ Browser launch failed on ${platform}:`);
+          console.error(`   Error: ${errorMessage}`);
+        }
+        
+        throw new Error(`Browser initialization failed: ${errorMessage}. See console for platform-specific troubleshooting steps.`);
       }
       
-      throw new Error(`Browser initialization failed: ${errorMessage}. See console for platform-specific troubleshooting steps.`);
+      // Re-throw other types of errors
+      throw error;
     }
-    
-    // Re-throw other types of errors
-    throw error;
+  } finally {
+    browserInitDepth--;
   }
 }
 
@@ -645,23 +776,36 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
               },
             ],
           };
-        });
+        }, 3, 1000, 'navigate');
       }, 'Failed to navigate');
 
     case 'screenshot':
       return await withErrorHandling(async () => {
-        return await withRetry(async () => {
-          const { page } = await initializeBrowser();
+        return await withTimeout(async () => {
+          return await withRetry(async () => {
+            const { page } = await initializeBrowser();
 
-          let screenshotOptions: any = {
-            fullPage: (args as any).fullPage || false,
-            encoding: 'base64',
-          };
+            let screenshotOptions: any = {
+              fullPage: (args as any).fullPage || false,
+              encoding: 'base64',
+            };
 
-          if ((args as any).selector) {
-            const element = await page.$((args as any).selector);
-            if (!element) throw new Error(`Element not found: ${(args as any).selector}`);
-            const screenshot = await element.screenshot({ encoding: 'base64' });
+            if ((args as any).selector) {
+              const element = await page.$((args as any).selector);
+              if (!element) throw new Error(`Element not found: ${(args as any).selector}`);
+              const screenshot = await element.screenshot({ encoding: 'base64' });
+              return {
+                content: [
+                  {
+                    type: 'image',
+                    data: screenshot,
+                    mimeType: 'image/png',
+                  },
+                ],
+              };
+            }
+
+            const screenshot = await page.screenshot(screenshotOptions);
             return {
               content: [
                 {
@@ -671,19 +815,8 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
                 },
               ],
             };
-          }
-
-          const screenshot = await page.screenshot(screenshotOptions);
-          return {
-            content: [
-              {
-                type: 'image',
-                data: screenshot,
-                mimeType: 'image/png',
-              },
-            ],
-          };
-        });
+          }, 3, 1000, 'screenshot');
+        }, 30000, 'screenshot-timeout');
       }, 'Failed to take screenshot');
 
     case 'get_content':
@@ -778,7 +911,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
               throw new Error(`Click failed: ${error instanceof Error ? error.message : String(error)}. Fallback also failed: ${fallbackError instanceof Error ? fallbackError.message : String(fallbackError)}`);
             }
           }
-        });
+        }, 3, 1000, 'click');
       }, 'Failed to click element');
 
     case 'type':

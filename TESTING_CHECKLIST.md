@@ -110,15 +110,17 @@ Test the original failing scenario that caused errors:
 3. Take a screenshot
 4. Close the browser
 
-This scenario previously caused "Navigating frame was detached" and screenshot session errors. Verify the retry mechanism works.
+This scenario previously caused "Navigating frame was detached", "Maximum call stack size exceeded", and screenshot session errors. Verify the retry mechanism and stack overflow protection works.
 ```
 
 **Expected Results:**
 - [ ] Navigation succeeds (with or without retries)
 - [ ] Screenshot captures successfully
 - [ ] No "Session closed" errors
+- [ ] No "Maximum call stack size exceeded" errors
 - [ ] Retry mechanism engages if needed (check logs)
 - [ ] Browser recovery works if session fails
+- [ ] Circuit breaker prevents infinite loops
 
 ### 3.2 Complex Navigation Test
 **Prompt for Claude Code CLI:**
@@ -394,6 +396,9 @@ Report if all steps complete successfully and note any errors or issues. This sh
 - [ ] JSON-RPC protocol compliance maintained
 - [ ] Retry mechanisms engage when needed
 - [ ] Session validation and recovery works
+- [ ] No "Maximum call stack size exceeded" errors occur
+- [ ] Circuit breaker prevents infinite recursion
+- [ ] Timeout controls prevent hanging operations
 
 ### Performance Requirements
 - [ ] Browser initialization under 10 seconds

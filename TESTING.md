@@ -24,6 +24,7 @@ Each testing approach serves a specific purpose:
 - ✅ JSON-RPC protocol compliance  
 - ✅ Tool availability (centralized)
 - ✅ Error handling implementation
+- ✅ Stack overflow protection validation
 - ✅ Code structure validation
 
 **When to use**:
@@ -39,7 +40,7 @@ Each testing approach serves a specific purpose:
 **Coverage**:
 - ✅ MCP client connection (Phase 1)
 - ✅ Browser operations (Phase 2)
-- ✅ Error recovery (Phase 3)
+- ✅ Error recovery and stack overflow protection (Phase 3)
 - ✅ Advanced features (Phase 4)
 
 **When to use**:

@@ -116,7 +116,9 @@ assistants to control a real browser, take screenshots, extract content, and mor
 - **Comprehensive toolset**: 11 tools covering all browser automation needs
 - **Proxy support**: Built-in proxy configuration for enhanced privacy
 - **Captcha handling**: Support for solving reCAPTCHA, hCaptcha, and Turnstile
-- **Error handling**: Robust error handling and reporting
+- **Robust error handling**: Advanced error recovery with circuit breaker pattern
+- **Stack overflow protection**: Comprehensive protection against infinite recursion
+- **Timeout controls**: Automatic timeout mechanisms prevent hanging operations
 
 ## Prerequisites
 
@@ -559,14 +561,20 @@ For advanced users, you can modify the server behavior by editing the source cod
 
 ### Common Issues
 
-1. **"command not found" or "syntax error" when using npx**
+1. **"Maximum call stack size exceeded" errors**
+   - This was fixed in version 1.2.0 with comprehensive stack overflow protection
+   - The server now includes circuit breaker patterns and recursion depth tracking
+   - Timeout controls prevent hanging operations that could lead to stack overflow
+   - If you encounter this error, ensure you're using the latest version: `npx puppeteer-real-browser-mcp-server@latest`
+
+2. **"command not found" or "syntax error" when using npx**
    - This was fixed in version 1.0.3 with the addition of a proper shebang line
    - Make sure you're using the latest version: `npx puppeteer-real-browser-mcp-server@latest`
    - For global installation: `npm install -g puppeteer-real-browser-mcp-server@latest`
    - If still having issues, install globally: `npm install -g puppeteer-real-browser-mcp-server`
    - Check your PATH includes npm global binaries: `npm config get prefix`
 
-2. **Browser won't start**
+3. **Browser won't start**
    - Check if Chrome/Chromium is installed in standard locations
    - **Windows specific troubleshooting**:
      
@@ -617,13 +625,13 @@ For advanced users, you can modify the server behavior by editing the source cod
    - Try with `headless: true` first
    - Check console output for Chrome path detection messages
 
-3. **Claude doesn't see the MCP server**
+4. **Claude doesn't see the MCP server**
    - Verify `claude_desktop_config.json` is in the correct location
    - Check JSON syntax is valid (use [jsonlint.com](https://jsonlint.com/))
    - Restart Claude Desktop completely
    - Check for any error messages in Claude Desktop
 
-**3a. Cursor IDE doesn't see the MCP server**
+**4a. Cursor IDE doesn't see the MCP server**
    - **Config File Location Issues**:
      - Verify `mcp.json` is in the correct location:
        - Global: `~/.cursor/mcp.json` (`%USERPROFILE%\.cursor\mcp.json` on Windows)
@@ -652,22 +660,22 @@ For advanced users, you can modify the server behavior by editing the source cod
      - Update Cursor IDE if using an older version
      - Check Cursor IDE documentation for MCP requirements
 
-4. **Permission denied errors**
+5. **Permission denied errors**
    - On Linux/Mac: Try `sudo npm install -g puppeteer-real-browser-mcp-server`
    - Or use nvm to manage Node.js without sudo
    - On Windows: Run command prompt as Administrator
 
-5. **Detection issues**
+6. **Detection issues**
    - Use appropriate delays between actions for better reliability
    - Add random delays with `random_scroll`
    - Use proxy if needed: `proxy: "http://proxy.example.com:8080"`
 
-6. **Memory leaks**
+7. **Memory leaks**
    - Always close browser instances with `browser_close` when done
    - Don't initialize multiple browsers without closing previous ones
    - Check for uncaught exceptions that might prevent cleanup
 
-7. **Timeout errors**
+8. **Timeout errors**
    - Increase timeout values: `{ "timeout": 60000 }`
    - Use `wait` tool before interacting with elements
    - Check network connectivity and website response times

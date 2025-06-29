@@ -53,6 +53,7 @@ npm run test:phase4  # Advanced features
 
 3. **Phase 3: Error Recovery Testing** (11/11 passed ✅)
    - Original failing scenario (cursor.com/dashboard)
+   - Stack overflow protection verification
    - Complex navigation with retries
    - Error categorization
    - Session recovery
@@ -81,6 +82,7 @@ The test suite automatically:
 - Records performance metrics
 - Identifies session recovery events
 - Categorizes errors by type
+- Monitors for stack overflow protection
 
 ## Interpreting Results
 
