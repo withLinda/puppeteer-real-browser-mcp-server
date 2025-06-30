@@ -44,7 +44,8 @@ export enum ContentStrategy {
 export class TokenManager {
   // MCP protocol token limits
   private readonly MCP_MAX_TOKENS = 25000;
-  private readonly SAFE_TOKEN_LIMIT = 24000; // Leave buffer for metadata
+  private readonly SAFE_TOKEN_LIMIT = 23000; // More conservative limit for safety
+  private readonly EMERGENCY_LIMIT = 22000; // Ultra-safe limit for emergency content
   private readonly DEFAULT_CHUNK_SIZE = 20000;
   private readonly DEFAULT_OVERLAP = 200;
 
@@ -653,6 +654,93 @@ Token Management Summary:
 - Chunks Created: ${processing.metadata.chunks || 1}
 - MCP Compliance: ${processing.metadata.processedTokens <= this.SAFE_TOKEN_LIMIT ? 'COMPLIANT' : 'NEEDS_CHUNKING'}
     `.trim();
+  }
+  /**
+   * Strict validation that ensures content absolutely never exceeds safe limits
+   * This is the final safeguard before sending content to MCP
+   */
+  strictValidateForMCP(content: string | ContentChunk[], type: 'html' | 'text'): {
+    isValid: boolean;
+    tokenCount: number;
+    action: 'allow' | 'truncate' | 'emergency_reduce' | 'reject';
+    message?: string;
+  } {
+    let totalTokens: number;
+    
+    if (Array.isArray(content)) {
+      // Handle chunked content
+      totalTokens = content.reduce((sum, chunk) => sum + chunk.tokenCount, 0);
+    } else {
+      // Handle regular content
+      totalTokens = this.countTokens(content, type);
+    }
+    
+    // Ultra-strict validation
+    if (totalTokens <= this.EMERGENCY_LIMIT) {
+      return {
+        isValid: true,
+        tokenCount: totalTokens,
+        action: 'allow'
+      };
+    }
+    
+    if (totalTokens <= this.SAFE_TOKEN_LIMIT) {
+      return {
+        isValid: true,
+        tokenCount: totalTokens,
+        action: 'allow',
+        message: 'Within safe limits but close to threshold'
+      };
+    }
+    
+    // Content exceeds safe limits
+    if (totalTokens <= this.MCP_MAX_TOKENS) {
+      return {
+        isValid: false,
+        tokenCount: totalTokens,
+        action: 'truncate',
+        message: `Content (${totalTokens} tokens) exceeds safe limit (${this.SAFE_TOKEN_LIMIT})`
+      };
+    }
+    
+    // Content exceeds even MCP limits
+    return {
+      isValid: false,
+      tokenCount: totalTokens,
+      action: 'reject',
+      message: `Content (${totalTokens} tokens) exceeds MCP maximum (${this.MCP_MAX_TOKENS})`
+    };
+  }
+  
+  /**
+   * Emergency content truncation when content exceeds limits
+   */
+  emergencyTruncate(content: string, type: 'html' | 'text'): string {
+    const targetTokens = this.EMERGENCY_LIMIT;
+    const currentTokens = this.countTokens(content, type);
+    
+    if (currentTokens <= targetTokens) {
+      return content;
+    }
+    
+    // Calculate approximate truncation point
+    const avgCharsPerToken = type === 'html' ? 2.8 : 4.0;
+    const targetChars = Math.floor(targetTokens * avgCharsPerToken);
+    
+    // Truncate content
+    let truncated = content.substring(0, targetChars);
+    
+    // Ensure we're within token limits after truncation
+    while (this.countTokens(truncated, type) > targetTokens && truncated.length > 100) {
+      truncated = truncated.substring(0, Math.floor(truncated.length * 0.9));
+    }
+    
+    // Add truncation notice
+    const notice = type === 'html' 
+      ? '\n\n<!-- Content truncated due to token limits -->'
+      : '\n\n[Content truncated due to token limits]';
+    
+    return truncated + notice;
   }
 }
 

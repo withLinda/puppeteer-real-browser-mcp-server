@@ -319,32 +319,43 @@ export class ContentStrategyEngine {
   }
 
   /**
-   * Estimate content size for different extraction modes
+   * Estimate content size for different extraction modes with actual content sampling
    */
-  private async estimateContentByMode(pageInstance: any, contentMode: string = 'full'): Promise<{html: number, text: number}> {
+  private async estimateContentByMode(pageInstance: any, contentMode: string = 'full'): Promise<{html: number, text: number, actualTokens: {html: number, text: number}}> {
+    let html: string, text: string;
+    
     switch (contentMode) {
       case 'summary':
-        const summaryHtml = await this.extractSummaryContent(pageInstance, 'html');
-        const summaryText = await this.extractSummaryContent(pageInstance, 'text');
-        return {
-          html: summaryHtml.length,
-          text: summaryText.length
-        };
+        html = await this.extractSummaryContent(pageInstance, 'html');
+        text = await this.extractSummaryContent(pageInstance, 'text');
+        break;
       
       case 'main':
-        const mainHtml = await this.extractMainContent(pageInstance, 'html');
-        const mainText = await this.extractMainContent(pageInstance, 'text');
-        return {
-          html: mainHtml.length,
-          text: mainText.length
-        };
+        html = await this.extractMainContent(pageInstance, 'html');
+        text = await this.extractMainContent(pageInstance, 'text');
+        break;
       
       default: // 'full'
-        return await pageInstance.evaluate(() => ({
-          html: document.documentElement.outerHTML.length,
-          text: (document.body?.innerText || '').length
+        const fullContent = await pageInstance.evaluate(() => ({
+          html: document.documentElement.outerHTML,
+          text: document.body?.innerText || ''
         }));
+        html = fullContent.html;
+        text = fullContent.text;
+        break;
     }
+    
+    // Calculate actual token counts from real content
+    const actualTokens = {
+      html: tokenManager.countTokens(html, 'html'),
+      text: tokenManager.countTokens(text, 'text')
+    };
+    
+    return {
+      html: html.length,
+      text: text.length,
+      actualTokens
+    };
   }
 
   /**
@@ -456,43 +467,47 @@ export class ContentStrategyEngine {
     const warnings: string[] = [];
     
     try {
-      // Use mode-aware content estimation
-      let contentSizes: {html: number, text: number};
+      // Use mode-aware content estimation with real content sampling
+      let htmlTokens: number, textTokens: number;
       
       if (selector) {
         // For specific selectors, use traditional sampling
         const sampleContent = await this.sampleContent(pageInstance, selector);
         const fullSizeEstimate = await this.estimateFullContentSize(pageInstance, sampleContent, selector);
-        contentSizes = {
-          html: fullSizeEstimate.html.length,
-          text: fullSizeEstimate.text.length
-        };
+        htmlTokens = tokenManager.countTokens(fullSizeEstimate.html, 'html');
+        textTokens = tokenManager.countTokens(fullSizeEstimate.text, 'text');
       } else {
-        // Use intelligent content mode estimation
-        contentSizes = await this.estimateContentByMode(pageInstance, contentMode);
+        // Use intelligent content mode estimation with real content
+        const contentEstimate = await this.estimateContentByMode(pageInstance, contentMode);
+        htmlTokens = contentEstimate.actualTokens.html;
+        textTokens = contentEstimate.actualTokens.text;
+        
+        // If initial estimate exceeds safe limits, try more aggressive filtering
+        if (htmlTokens > 22000 || textTokens > 22000) {
+          console.warn(`Initial ${contentMode} mode estimate too large (${Math.max(htmlTokens, textTokens)} tokens), applying aggressive filtering...`);
+          
+          // Try emergency content reduction
+          const emergencyContent = await this.extractEmergencyContent(pageInstance);
+          htmlTokens = tokenManager.countTokens(emergencyContent.html, 'html');
+          textTokens = tokenManager.countTokens(emergencyContent.text, 'text');
+          
+          warnings.push(`Applied emergency content filtering due to large page size`);
+        }
       }
       
-      // Calculate token estimates based on actual character counts
-      const htmlTokens = tokenManager.countTokens('x'.repeat(contentSizes.html), 'html');
-      const textTokens = tokenManager.countTokens('x'.repeat(contentSizes.text), 'text');
-      
-      // Create sample content for validation (using appropriate length)
-      const sampleHtmlContent = 'x'.repeat(Math.min(contentSizes.html, 5000));
-      const sampleTextContent = 'x'.repeat(Math.min(contentSizes.text, 5000));
-      
-      // Determine optimal strategy
-      const htmlValidation = tokenManager.validateContentSize(sampleHtmlContent, 'html');
-      const textValidation = tokenManager.validateContentSize(sampleTextContent, 'text');
+      // Use actual token counts for validation instead of character-based estimation
+      const htmlExceedsLimit = htmlTokens > 23000;
+      const textExceedsLimit = textTokens > 23000;
       
       let recommendedType: 'html' | 'text';
       let strategy: ContentStrategy;
       let requiresChunking = false;
       
-      if (!htmlValidation.exceedsLimit) {
+      if (!htmlExceedsLimit) {
         // HTML fits within limits
         recommendedType = 'html';
         strategy = ContentStrategy.FULL_HTML;
-      } else if (!textValidation.exceedsLimit) {
+      } else if (!textExceedsLimit) {
         // HTML too large but text fits
         recommendedType = 'text';
         strategy = ContentStrategy.FULL_TEXT;
@@ -766,6 +781,61 @@ Content Strategy Summary:
 - Requires Chunking: ${estimate.requiresChunking}
 - Warnings: ${estimate.warnings?.join(', ') || 'None'}
       `.trim();
+    });
+  }
+  /**
+   * Emergency content extraction for extremely large pages
+   * Extracts only the most essential content to stay within token limits
+   */
+  private async extractEmergencyContent(pageInstance: any): Promise<{html: string, text: string}> {
+    return await pageInstance.evaluate(() => {
+      const essentialElements: Element[] = [];
+      
+      // Page title
+      const title = document.querySelector('title');
+      if (title) essentialElements.push(title);
+      
+      // Main heading only
+      const mainHeading = document.querySelector('h1');
+      if (mainHeading) essentialElements.push(mainHeading);
+      
+      // First significant paragraph
+      const firstParagraph = Array.from(document.querySelectorAll('p'))
+        .find(p => (p.textContent?.trim().length || 0) > 100);
+      if (firstParagraph) essentialElements.push(firstParagraph);
+      
+      // Navigation elements (for interactive elements)
+      const navElements = Array.from(document.querySelectorAll('a, button, input[type="submit"], input[type="button"]'))
+        .filter(el => el.textContent?.trim())
+        .slice(0, 10); // Limit to first 10 interactive elements
+      essentialElements.push(...navElements);
+      
+      // Key form elements
+      const formElements = Array.from(document.querySelectorAll('input[type="text"], input[type="email"], input[type="password"], textarea'))
+        .slice(0, 5); // Limit to first 5 form elements
+      essentialElements.push(...formElements);
+      
+      const htmlContent = essentialElements.map(el => el.outerHTML).join('\n');
+      const textContent = `Page: ${document.title || 'Unknown'}\n\n` +
+        essentialElements.map(el => {
+          const text = el.textContent?.trim();
+          const tagName = el.tagName.toLowerCase();
+          const type = el.getAttribute('type');
+          const href = el.getAttribute('href');
+          
+          if (tagName === 'a' && href) {
+            return `Link: ${text} (${href})`;
+          } else if (['input', 'button'].includes(tagName)) {
+            return `${type ? type.charAt(0).toUpperCase() + type.slice(1) : 'Input'}: ${text || el.getAttribute('placeholder') || el.getAttribute('value') || '[Element]'}`;
+          } else {
+            return text;
+          }
+        }).filter(Boolean).join('\n\n');
+      
+      return {
+        html: `<!-- Emergency content extraction for large page -->\n${htmlContent}`,
+        text: `Emergency Content Summary:\n${textContent}`
+      };
     });
   }
 }
