@@ -390,4 +390,266 @@ describe('MCP Server Integration Tests', () => {
       });
     });
   });
+
+  describe('Workflow Validation System', () => {
+    test('should prevent find_selector before content analysis', (done) => {
+      const findSelectorMessage = JSON.stringify({
+        jsonrpc: '2.0',
+        id: 20,
+        method: 'tools/call',
+        params: {
+          name: 'find_selector',
+          arguments: {
+            text: 'button text'
+          }
+        }
+      }) + '\n';
+
+      let responseReceived = false;
+
+      const timeout = setTimeout(() => {
+        if (!responseReceived) {
+          done(new Error('No response received for workflow validation test'));
+        }
+      }, 10000);
+
+      serverProcess.stdout?.on('data', (data) => {
+        const lines = data.toString().split('\n').filter((line: string) => line.trim());
+        
+        lines.forEach((line: string) => {
+          try {
+            const response = JSON.parse(line);
+            if (response.id === 20) {
+              expect(response.error).toBeDefined();
+              expect(response.error.message).toMatch(/Cannot search for selectors|cannot be executed in current state/);
+              expect(response.error.message).toContain('get_content');
+              responseReceived = true;
+              clearTimeout(timeout);
+              done();
+            }
+          } catch (e) {
+            // Ignore non-JSON lines
+          }
+        });
+      });
+
+      serverProcess.stderr?.on('data', (data) => {
+        if (data.toString().includes('MCP Server for puppeteer-real-browser started')) {
+          serverProcess.stdin?.write(findSelectorMessage);
+        }
+      });
+    });
+
+    test('should guide proper workflow sequence', (done) => {
+      const browserInitMessage = JSON.stringify({
+        jsonrpc: '2.0',
+        id: 21,
+        method: 'tools/call',
+        params: {
+          name: 'browser_init',
+          arguments: {}
+        }
+      }) + '\n';
+
+      let initResponseReceived = false;
+
+      const timeout = setTimeout(() => {
+        if (!initResponseReceived) {
+          done(new Error('Browser init response not received'));
+        }
+      }, 15000);
+
+      serverProcess.stdout?.on('data', (data) => {
+        const lines = data.toString().split('\n').filter((line: string) => line.trim());
+        
+        lines.forEach((line: string) => {
+          try {
+            const response = JSON.parse(line);
+            if (response.id === 21 && response.result) {
+              expect(response.result.content[0].text).toContain('Next step: Use navigate');
+              expect(response.result.content[0].text).toContain('get_content to analyze');
+              expect(response.result.content[0].text).toContain('prevents blind selector guessing');
+              initResponseReceived = true;
+              clearTimeout(timeout);
+              done();
+            }
+          } catch (e) {
+            // Ignore non-JSON lines
+          }
+        });
+      });
+
+      serverProcess.stderr?.on('data', (data) => {
+        if (data.toString().includes('MCP Server for puppeteer-real-browser started')) {
+          serverProcess.stdin?.write(browserInitMessage);
+        }
+      });
+    });
+
+    test('should validate workflow state transitions', () => {
+      const { readFileSync } = require('fs');
+      const serverCode = readFileSync('src/index.ts', 'utf8');
+      
+      expect(serverCode).toContain('withWorkflowValidation');
+      expect(serverCode).toContain('validateWorkflow');
+      expect(serverCode).toContain('recordExecution');
+      expect(serverCode).toContain('workflowValidator');
+    });
+
+    test('should have workflow validation imports', () => {
+      const { readFileSync } = require('fs');
+      const serverCode = readFileSync('src/index.ts', 'utf8');
+      
+      expect(serverCode).toContain('workflow-validation');
+      expect(serverCode).toContain('content-strategy');
+      expect(serverCode).toContain('token-management');
+    });
+  });
+
+  describe('Token Management Integration', () => {
+    test('should have token management system available', () => {
+      const { readFileSync } = require('fs');
+      const tokenMgmtCode = readFileSync('src/token-management.ts', 'utf8');
+      
+      expect(tokenMgmtCode).toContain('class TokenManager');
+      expect(tokenMgmtCode).toContain('MCP_MAX_TOKENS = 25000');
+      expect(tokenMgmtCode).toContain('validateContentSize');
+      expect(tokenMgmtCode).toContain('chunkContent');
+    });
+
+    test('should have content strategy engine available', () => {
+      const { readFileSync } = require('fs');
+      const strategyCode = readFileSync('src/content-strategy.ts', 'utf8');
+      
+      expect(strategyCode).toContain('class ContentStrategyEngine');
+      expect(strategyCode).toContain('processContentRequest');
+      expect(strategyCode).toContain('performPreflightEstimation');
+    });
+
+    test('should integrate token management in get_content', () => {
+      const { readFileSync } = require('fs');
+      const serverCode = readFileSync('src/index.ts', 'utf8');
+      
+      expect(serverCode).toContain('contentStrategy.processContentRequest');
+      expect(serverCode).toContain('Token Management Summary');
+      expect(serverCode).toContain('chunks due to MCP token limits');
+    });
+  });
+
+  describe('Content Analysis Prevention', () => {
+    test('should have stale content analysis check', () => {
+      const { readFileSync } = require('fs');
+      const workflowCode = readFileSync('src/workflow-validation.ts', 'utf8');
+      
+      expect(workflowCode).toContain('isContentAnalysisStale');
+      expect(workflowCode).toContain('WorkflowState.CONTENT_ANALYZED');
+      expect(workflowCode).toContain('find_selector');
+    });
+
+    test('should have enhanced find_selector validation', () => {
+      const { readFileSync } = require('fs');
+      const serverCode = readFileSync('src/index.ts', 'utf8');
+      
+      expect(serverCode).toContain('Content analysis is stale or missing');
+      expect(serverCode).toContain('prevents blind selector guessing');
+      expect(serverCode).toContain('withWorkflowValidation(\'find_selector\'');
+    });
+  });
+
+  describe('Workflow State Management', () => {
+    test('should have workflow state enum', () => {
+      const { readFileSync } = require('fs');
+      const workflowCode = readFileSync('src/workflow-validation.ts', 'utf8');
+      
+      expect(workflowCode).toContain('enum WorkflowState');
+      expect(workflowCode).toContain('BROWSER_INIT');
+      expect(workflowCode).toContain('PAGE_LOADED');
+      expect(workflowCode).toContain('CONTENT_ANALYZED');
+      expect(workflowCode).toContain('SELECTOR_AVAILABLE');
+    });
+
+    test('should have workflow context interface', () => {
+      const { readFileSync } = require('fs');
+      const workflowCode = readFileSync('src/workflow-validation.ts', 'utf8');
+      
+      expect(workflowCode).toContain('interface WorkflowContext');
+      expect(workflowCode).toContain('currentState');
+      expect(workflowCode).toContain('contentAnalyzed');
+      expect(workflowCode).toContain('toolCallHistory');
+    });
+
+    test('should have workflow validator class', () => {
+      const { readFileSync } = require('fs');
+      const workflowCode = readFileSync('src/workflow-validation.ts', 'utf8');
+      
+      expect(workflowCode).toContain('class WorkflowValidator');
+      expect(workflowCode).toContain('validateToolExecution');
+      expect(workflowCode).toContain('recordToolExecution');
+      expect(workflowCode).toContain('updateWorkflowState');
+    });
+  });
+
+  describe('Integration Tests for Issue #9 Resolution', () => {
+    test('should block find_selector without prior get_content', (done) => {
+      // This test specifically addresses the GitHub issue
+      const sequence = [
+        {
+          id: 30,
+          method: 'tools/call',
+          params: { name: 'browser_init', arguments: {} }
+        },
+        {
+          id: 31,
+          method: 'tools/call',
+          params: { name: 'find_selector', arguments: { text: 'test' } }
+        }
+      ];
+
+      let responses = 0;
+      let blockedCorrectly = false;
+
+      const timeout = setTimeout(() => {
+        expect(blockedCorrectly).toBe(true);
+        done();
+      }, 15000);
+
+      serverProcess.stdout?.on('data', (data) => {
+        const lines = data.toString().split('\n').filter((line: string) => line.trim());
+        
+        lines.forEach((line: string) => {
+          try {
+            const response = JSON.parse(line);
+            if (response.id === 31) {
+              // This should be blocked
+              expect(response.error).toBeDefined();
+              expect(response.error.message).toMatch(/Cannot search for selectors|cannot be executed/);
+              expect(response.error.message).toContain('get_content');
+              blockedCorrectly = true;
+              clearTimeout(timeout);
+              done();
+            } else if (response.id === 30 && response.result) {
+              // Browser init succeeded, now try find_selector
+              const findMessage = JSON.stringify({
+                jsonrpc: '2.0',
+                ...sequence[1]
+              }) + '\n';
+              setTimeout(() => serverProcess.stdin?.write(findMessage), 1000);
+            }
+          } catch (e) {
+            // Ignore non-JSON lines
+          }
+        });
+      });
+
+      serverProcess.stderr?.on('data', (data) => {
+        if (data.toString().includes('MCP Server for puppeteer-real-browser started')) {
+          const initMessage = JSON.stringify({
+            jsonrpc: '2.0',
+            ...sequence[0]
+          }) + '\n';
+          serverProcess.stdin?.write(initMessage);
+        }
+      });
+    });
+  });
 });

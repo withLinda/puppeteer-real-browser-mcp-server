@@ -43,9 +43,19 @@ const promises_1 = require("node:timers/promises");
 const fs = __importStar(require("fs"));
 const path = __importStar(require("path"));
 const net = __importStar(require("net"));
+const workflow_validation_1 = require("./workflow-validation");
+const content_strategy_1 = require("./content-strategy");
+const self_healing_locators_1 = require("./self-healing-locators");
 // Store browser instance
 let browserInstance = null;
 let pageInstance = null;
+// Check environment variable for testing override
+const disableContentPriority = process.env.DISABLE_CONTENT_PRIORITY === 'true' || process.env.NODE_ENV === 'test';
+let contentPriorityConfig = {
+    prioritizeContent: !disableContentPriority, // Default to prioritizing get_content (unless testing)
+    fallbackToScreenshots: disableContentPriority, // Allow screenshots in test mode
+    autoSuggestGetContent: !disableContentPriority // Provide guidance toward get_content (unless testing)
+};
 let browserCircuitBreaker = {
     failureCount: 0,
     lastFailureTime: 0,
@@ -74,6 +84,40 @@ async function withErrorHandling(operation, errorMessage) {
     catch (error) {
         console.error(`${errorMessage}:`, error);
         throw new Error(`${errorMessage}: ${error instanceof Error ? error.message : String(error)}`);
+    }
+}
+// Workflow validation wrapper
+async function withWorkflowValidation(toolName, args, operation) {
+    // Validate workflow state before execution
+    const validation = (0, workflow_validation_1.validateWorkflow)(toolName, args);
+    if (!validation.isValid) {
+        let errorMessage = validation.errorMessage || `Tool '${toolName}' is not allowed in current workflow state.`;
+        if (validation.suggestedAction) {
+            errorMessage += `\n\n💡 Next Steps: ${validation.suggestedAction}`;
+        }
+        // Add workflow context for debugging
+        const workflowSummary = workflow_validation_1.workflowValidator.getValidationSummary();
+        errorMessage += `\n\n🔍 ${workflowSummary}`;
+        // Record failed execution
+        (0, workflow_validation_1.recordExecution)(toolName, args, false, errorMessage);
+        throw new Error(errorMessage);
+    }
+    // Execute the operation
+    let result;
+    let success = false;
+    let executionError;
+    try {
+        result = await operation();
+        success = true;
+        return result;
+    }
+    catch (error) {
+        executionError = error instanceof Error ? error.message : String(error);
+        throw error;
+    }
+    finally {
+        // Record execution result in workflow
+        (0, workflow_validation_1.recordExecution)(toolName, args, success, executionError);
     }
 }
 // Specific error types for better handling
@@ -866,6 +910,48 @@ async function forceKillAllChromeProcesses() {
         console.error('Error force-killing Chrome processes:', error);
     }
 }
+// Helper function to quickly find authentication elements
+async function findAuthElements(pageInstance) {
+    return await pageInstance.evaluate(() => {
+        const authSelectors = [];
+        // Common auth-related text patterns
+        const authPatterns = [
+            /^(log\s*in|sign\s*in|log\s*on|sign\s*on)$/i,
+            /^(login|signin|authenticate|enter)$/i,
+            /continue with (google|github|facebook|twitter|microsoft)/i,
+            /sign in with/i
+        ];
+        // Find all clickable elements
+        const clickableElements = document.querySelectorAll('a, button, [role="button"], input[type="submit"], input[type="button"]');
+        clickableElements.forEach(el => {
+            const text = (el.textContent || '').trim();
+            const ariaLabel = el.getAttribute('aria-label') || '';
+            const href = el.href || '';
+            // Check if element matches auth patterns
+            const matchesPattern = authPatterns.some(pattern => pattern.test(text) || pattern.test(ariaLabel));
+            // Check href for auth routes
+            const hasAuthRoute = href.includes('login') || href.includes('signin') ||
+                href.includes('auth') || href.includes('oauth');
+            if (matchesPattern || hasAuthRoute) {
+                // Generate a reliable selector
+                if (el.id) {
+                    authSelectors.push(`#${CSS.escape(el.id)}`);
+                }
+                else if (el.className && typeof el.className === 'string') {
+                    const classes = el.className.trim().split(/\s+/).filter(c => c);
+                    if (classes.length > 0) {
+                        authSelectors.push(el.tagName.toLowerCase() + '.' + classes.map(c => CSS.escape(c)).join('.'));
+                    }
+                }
+                else {
+                    // Fallback to text-based selector
+                    authSelectors.push(`${el.tagName.toLowerCase()}:contains("${text}")`);
+                }
+            }
+        });
+        return [...new Set(authSelectors)]; // Remove duplicates
+    });
+}
 // Tool definitions
 const TOOLS = [
     {
@@ -916,6 +1002,28 @@ const TOOLS = [
                     },
                     additionalProperties: true,
                 },
+                contentPriority: {
+                    type: 'object',
+                    description: 'Configuration for prioritizing get_content over screenshots',
+                    properties: {
+                        prioritizeContent: {
+                            type: 'boolean',
+                            description: 'Prioritize get_content method over screenshots for better reliability',
+                            default: true,
+                        },
+                        fallbackToScreenshots: {
+                            type: 'boolean',
+                            description: 'Allow fallback to screenshots when get_content is insufficient',
+                            default: false,
+                        },
+                        autoSuggestGetContent: {
+                            type: 'boolean',
+                            description: 'Automatically suggest get_content alternatives when screenshots fail',
+                            default: true,
+                        },
+                    },
+                    additionalProperties: false,
+                },
             },
         },
     },
@@ -941,7 +1049,8 @@ const TOOLS = [
     },
     {
         name: 'screenshot',
-        description: 'Take a screenshot of the current page',
+        description: 'Take a screenshot of the current page (Note: May fail on some configurations due to stack overflow issues. Consider using get_content for content analysis instead)',
+        deprecated: 'Consider using get_content for more reliable page analysis',
         inputSchema: {
             type: 'object',
             properties: {
@@ -964,7 +1073,7 @@ const TOOLS = [
     },
     {
         name: 'get_content',
-        description: 'Get page content (HTML or text)',
+        description: '**Recommended** method to get page content (HTML or text) - More reliable than screenshots for content analysis and navigation tasks',
         inputSchema: {
             type: 'object',
             properties: {
@@ -977,6 +1086,18 @@ const TOOLS = [
                 selector: {
                     type: 'string',
                     description: 'CSS selector to get content from specific element',
+                },
+                contentMode: {
+                    type: 'string',
+                    enum: ['full', 'main', 'summary'],
+                    description: 'Content extraction mode: "full" (entire page), "main" (main content areas only), "summary" (headings and key sections)',
+                    default: 'main',
+                },
+                resourceBlocking: {
+                    type: 'string',
+                    enum: ['disabled', 'minimal', 'standard', 'aggressive'],
+                    description: 'Block non-essential resources for faster extraction: "disabled" (no blocking), "minimal" (images/fonts), "standard" (ads/analytics), "aggressive" (most non-content)',
+                    default: 'standard',
                 },
             },
         },
@@ -1025,23 +1146,28 @@ const TOOLS = [
     },
     {
         name: 'wait',
-        description: 'Wait for various conditions',
+        description: 'Wait for various conditions with smart detection mechanisms',
         inputSchema: {
             type: 'object',
             properties: {
                 type: {
                     type: 'string',
-                    enum: ['selector', 'navigation', 'timeout'],
-                    description: 'Type of wait condition',
+                    enum: ['selector', 'navigation', 'timeout', 'function', 'response', 'request', 'element_stable', 'content_loaded', 'network_idle'],
+                    description: 'Type of wait condition: selector (element appears), navigation (page loads), timeout (fixed time), function (custom JS), response (API response), request (network request), element_stable (element stops moving), content_loaded (dynamic content), network_idle (no network activity)',
                 },
                 value: {
                     type: 'string',
-                    description: 'Selector to wait for or timeout in ms',
+                    description: 'Selector, timeout in ms, JavaScript function, URL pattern, or condition to wait for',
                 },
                 timeout: {
                     type: 'number',
                     description: 'Maximum wait time in ms',
                     default: 30000,
+                },
+                options: {
+                    type: 'object',
+                    description: 'Additional wait options (visible, hidden, polling interval, etc.)',
+                    additionalProperties: true,
                 },
             },
             required: ['type', 'value'],
@@ -1080,7 +1206,7 @@ const TOOLS = [
     },
     {
         name: 'find_selector',
-        description: 'Find CSS selector for element containing specific text',
+        description: 'Find CSS selector for element containing specific text with enhanced semantic awareness',
         inputSchema: {
             type: 'object',
             properties: {
@@ -1090,12 +1216,17 @@ const TOOLS = [
                 },
                 elementType: {
                     type: 'string',
-                    description: 'HTML element type to search within (e.g., "button", "a", "div"). Default is "*" for any element',
+                    description: 'Semantic element type: "button", "link", "input", "navigation", "heading", "list", "article", "form", or specific HTML tag. Uses semantic role mappings for better detection.',
                     default: '*',
                 },
                 exact: {
                     type: 'boolean',
                     description: 'Whether to match exact text (true) or partial text (false)',
+                    default: false,
+                },
+                includeHidden: {
+                    type: 'boolean',
+                    description: 'Whether to include hidden/invisible elements in search',
                     default: false,
                 },
             },
@@ -1113,7 +1244,7 @@ server.setRequestHandler(types_js_1.InitializeRequestSchema, async (request) => 
     },
     serverInfo: {
         name: 'puppeteer-real-browser-mcp-server',
-        version: '1.3.0',
+        version: '1.4.0',
     },
 }));
 // Register tool handlers
@@ -1136,37 +1267,71 @@ server.setRequestHandler(types_js_1.CallToolRequestSchema, async (request) => {
     }
     switch (name) {
         case 'browser_init':
-            return await withErrorHandling(async () => {
-                await initializeBrowser(args);
-                return {
-                    content: [
-                        {
-                            type: 'text',
-                            text: 'Browser initialized successfully with anti-detection features',
-                        },
-                    ],
-                };
-            }, 'Failed to initialize browser');
-        case 'navigate':
-            return await withErrorHandling(async () => {
-                return await withRetry(async () => {
-                    const { page } = await initializeBrowser();
-                    await page.goto(args.url, {
-                        waitUntil: args.waitUntil || 'networkidle2',
-                        timeout: 60000,
-                    });
+            return await withWorkflowValidation('browser_init', args, async () => {
+                return await withErrorHandling(async () => {
+                    // Update content priority configuration if provided
+                    if (args.contentPriority) {
+                        contentPriorityConfig = {
+                            ...contentPriorityConfig,
+                            ...args.contentPriority
+                        };
+                    }
+                    await initializeBrowser(args);
+                    const configMessage = contentPriorityConfig.prioritizeContent
+                        ? '\n\n💡 Content Priority Mode: get_content is prioritized for better reliability. Use get_content for page analysis instead of screenshots.'
+                        : '';
+                    const workflowMessage = '\n\n🔄 Workflow Status: Browser initialized\n' +
+                        '  • Next step: Use navigate to load a web page\n' +
+                        '  • Then: Use get_content to analyze page content\n' +
+                        '  • Finally: Use find_selector and interaction tools\n\n' +
+                        '✅ Workflow validation is now active - prevents blind selector guessing';
                     return {
                         content: [
                             {
                                 type: 'text',
-                                text: `Navigated to ${args.url}`,
+                                text: `Browser initialized successfully with anti-detection features${configMessage}${workflowMessage}`,
                             },
                         ],
                     };
-                }, 3, 1000, 'navigate');
-            }, 'Failed to navigate');
+                }, 'Failed to initialize browser');
+            });
+        case 'navigate':
+            return await withWorkflowValidation('navigate', args, async () => {
+                return await withErrorHandling(async () => {
+                    return await withRetry(async () => {
+                        const { page } = await initializeBrowser();
+                        await page.goto(args.url, {
+                            waitUntil: args.waitUntil || 'networkidle2',
+                            timeout: 60000,
+                        });
+                        const workflowMessage = '\n\n🔄 Workflow Status: Page loaded\n' +
+                            '  • Next step: Use get_content to analyze page content\n' +
+                            '  • This enables find_selector and interaction tools\n' +
+                            '  • Content analysis prevents blind selector guessing';
+                        return {
+                            content: [
+                                {
+                                    type: 'text',
+                                    text: `Navigated to ${args.url}${workflowMessage}`,
+                                },
+                            ],
+                        };
+                    }, 3, 1000, 'navigate');
+                }, 'Failed to navigate');
+            });
         case 'screenshot':
             return await withErrorHandling(async () => {
+                // Check content priority configuration
+                if (contentPriorityConfig.prioritizeContent && !contentPriorityConfig.fallbackToScreenshots) {
+                    const suggestion = contentPriorityConfig.autoSuggestGetContent
+                        ? '\n\n💡 Recommendation: Use get_content instead of screenshots for:\n' +
+                            '  • get_content with type="text" for readable page content\n' +
+                            '  • get_content with type="html" for DOM structure analysis\n' +
+                            '  • More reliable and faster than screenshots for content analysis\n' +
+                            '  • Enables all navigation and automation tasks without visual capture'
+                        : '';
+                    throw new Error(`Screenshot disabled in content priority mode. ${suggestion}`);
+                }
                 return await withTimeout(async () => {
                     return await withRetry(async () => {
                         const { page } = await initializeBrowser();
@@ -1289,7 +1454,14 @@ server.setRequestHandler(types_js_1.CallToolRequestSchema, async (request) => {
                                         };
                                     }
                                     catch (lastResortError) {
-                                        throw new Error(`Screenshot failed with stack overflow. Original error: ${error.message}. CDP fallback error: ${fallbackError instanceof Error ? fallbackError.message : String(fallbackError)}. Simple fallback error: ${lastResortError instanceof Error ? lastResortError.message : String(lastResortError)}`);
+                                        const suggestion = contentPriorityConfig.autoSuggestGetContent
+                                            ? '\n\n💡 Alternative Solution: Use get_content instead of screenshots:\n' +
+                                                '  • get_content with type="text" for readable content\n' +
+                                                '  • get_content with type="html" for structure analysis\n' +
+                                                '  • More reliable for automation and navigation tasks\n' +
+                                                '  • No stack overflow issues'
+                                            : '';
+                                        throw new Error(`Screenshot failed with stack overflow. Original error: ${error.message}. CDP fallback error: ${fallbackError instanceof Error ? fallbackError.message : String(fallbackError)}. Simple fallback error: ${lastResortError instanceof Error ? lastResortError.message : String(lastResortError)}.${suggestion}`);
                                     }
                                 }
                             }
@@ -1300,151 +1472,435 @@ server.setRequestHandler(types_js_1.CallToolRequestSchema, async (request) => {
                 }, 30000, 'screenshot-timeout');
             }, 'Failed to take screenshot');
         case 'get_content':
-            return await withErrorHandling(async () => {
+            return await withWorkflowValidation('get_content', args, async () => {
                 const { page } = await initializeBrowser();
-                let content;
-                if (args.selector) {
-                    const element = await page.$(args.selector);
-                    if (!element)
-                        throw new Error(`Element not found: ${args.selector}`);
-                    content = args.type === 'text'
-                        ? await element.evaluate((el) => el.textContent)
-                        : await element.evaluate((el) => el.outerHTML);
-                }
-                else {
-                    content = args.type === 'text'
-                        ? await page.evaluate(() => {
-                            return document.body ? document.body.innerText : '';
-                        })
-                        : await page.content();
-                }
-                return {
-                    content: [
-                        {
-                            type: 'text',
-                            text: content,
-                        },
-                    ],
-                };
-            }, 'Failed to get content');
-        case 'click':
-            return await withErrorHandling(async () => {
-                return await withRetry(async () => {
-                    const { page } = await initializeBrowser();
-                    const selector = args.selector;
-                    // Pre-validation: Check if element exists using get_content functionality
+                // Progressive content modes to try (start with main for better efficiency)
+                const contentModes = ['main', 'summary', 'full'];
+                let lastError = null;
+                // If user specified a content mode, respect it
+                const userSpecifiedMode = args.contentMode;
+                const modesToTry = userSpecifiedMode ? [userSpecifiedMode] : contentModes;
+                // Try each content mode progressively
+                for (const mode of modesToTry) {
                     try {
-                        const element = await page.$(selector);
-                        if (!element) {
-                            throw new Error(`Element not found: ${selector}. Please verify the selector is correct and the element exists on the page.`);
-                        }
-                        // Wait for element to be ready
-                        await page.waitForSelector(selector, { timeout: 5000 });
-                        // Check element visibility
-                        const boundingBox = await element.boundingBox();
-                        if (!boundingBox) {
-                            console.warn(`Element ${selector} has no bounding box, attempting JavaScript click`);
-                            // Fallback to JavaScript click
-                            await page.$eval(selector, (el) => el.click());
+                        console.error(`Attempting get_content with contentMode: ${mode}`);
+                        // Use content strategy engine for intelligent content processing
+                        const contentRequest = {
+                            type: args.type,
+                            selector: args.selector,
+                            contentMode: mode,
+                            resourceBlocking: args.resourceBlocking || 'standard',
+                            estimateOnly: false,
+                            chunkingPreference: 'allow'
+                        };
+                        const response = await content_strategy_1.contentStrategy.processContentRequest(page, contentRequest);
+                        // Format response based on whether content was chunked
+                        let responseText;
+                        if (Array.isArray(response.content)) {
+                            // Content was chunked
+                            const chunks = response.content;
+                            responseText = `Content processed into ${chunks.length} chunks due to MCP token limits:\n\n`;
+                            chunks.forEach((chunk, index) => {
+                                responseText += `--- Chunk ${index + 1}/${chunks.length} (${chunk.tokenCount} tokens) ---\n`;
+                                responseText += chunk.content;
+                                if (index < chunks.length - 1) {
+                                    responseText += '\n\n';
+                                }
+                            });
+                            responseText += `\n\n📊 Token Management Summary:\n`;
+                            responseText += `  • Original tokens: ${response.metadata.originalTokens}\n`;
+                            responseText += `  • Processed tokens: ${response.metadata.processedTokens}\n`;
+                            responseText += `  • Strategy: ${response.strategy}\n`;
+                            responseText += `  • Chunks: ${response.metadata.chunksCount}\n`;
+                            if (response.metadata.compressionRatio) {
+                                responseText += `  • Compression ratio: ${(response.metadata.compressionRatio * 100).toFixed(1)}%\n`;
+                            }
                         }
                         else {
-                            // Standard click with options
-                            const options = args.options || {};
-                            if (args.waitForNavigation) {
-                                await Promise.all([
-                                    page.waitForNavigation({ waitUntil: 'networkidle2' }),
-                                    page.click(selector, options),
-                                ]);
-                            }
-                            else {
-                                await page.click(selector, options);
+                            // Content was not chunked
+                            responseText = response.content;
+                            if (response.metadata.originalTokens > 20000) {
+                                responseText += `\n\n📊 Token Info: ${response.metadata.processedTokens} tokens (within MCP limits)`;
                             }
                         }
+                        // Add workflow guidance
+                        if (response.workflowGuidance) {
+                            responseText += response.workflowGuidance;
+                        }
+                        // Add mode info to the response
+                        if (mode !== 'full' && !userSpecifiedMode) {
+                            responseText += `\n\n📊 Content Mode: Automatically used '${mode}' mode for optimal token usage`;
+                        }
+                        // Add content priority suggestions
+                        const successMessage = contentPriorityConfig.autoSuggestGetContent && args.type !== 'html'
+                            ? `\n\n✅ Content retrieved successfully! This method is more reliable than screenshots for:\n` +
+                                `  • Navigation and automation tasks\n` +
+                                `  • Content analysis and text extraction\n` +
+                                `  • Finding elements and form fields\n` +
+                                `  • No browser compatibility issues`
+                            : '';
                         return {
                             content: [
                                 {
                                     type: 'text',
-                                    text: `Clicked element: ${selector}`,
+                                    text: responseText + successMessage,
                                 },
                             ],
                         };
                     }
                     catch (error) {
-                        if (error instanceof Error && error.message.includes('not found')) {
-                            throw error; // Re-throw element not found errors with our custom message
+                        lastError = error instanceof Error ? error : new Error(String(error));
+                        const errorMessage = lastError.message;
+                        // Check if this is a token limit error
+                        if (errorMessage.includes('exceeds maximum allowed tokens') ||
+                            (errorMessage.includes('MCP tool') && errorMessage.includes('response'))) {
+                            console.error(`Content mode '${mode}' exceeded token limits`);
+                            // If this wasn't the last mode to try, continue to next mode
+                            if (mode !== modesToTry[modesToTry.length - 1]) {
+                                console.error(`Retrying with next content mode...`);
+                                continue;
+                            }
                         }
-                        // For other errors, try JavaScript click as fallback
+                        else {
+                            // For non-token errors, fail immediately
+                            throw error;
+                        }
+                    }
+                }
+                // If we get here, all modes failed
+                const finalError = lastError || new Error('Failed to retrieve content');
+                // Provide helpful guidance about the failure
+                let errorMessage = finalError.message;
+                if (errorMessage.includes('exceeds maximum allowed tokens')) {
+                    errorMessage += '\n\n❌ All content modes exceeded token limits. The page is extremely large.\n' +
+                        '💡 Try these approaches:\n' +
+                        '  1. Use a specific selector to target a small section\n' +
+                        '  2. Use type="text" instead of type="html"\n' +
+                        '  3. Break down the analysis into multiple targeted get_content calls\n' +
+                        '  4. Consider if you really need the full page content';
+                }
+                throw new Error(errorMessage);
+            });
+        case 'click':
+            return await withWorkflowValidation('click', args, async () => {
+                return await withErrorHandling(async () => {
+                    return await withRetry(async () => {
+                        const { page } = await initializeBrowser();
+                        const selector = args.selector;
+                        const waitForNavigation = args.waitForNavigation;
+                        const options = args.options || {};
+                        // Try to find element using self-healing locators
+                        const elementResult = await self_healing_locators_1.selfHealingLocators.findElementWithFallbacks(page, selector);
+                        if (!elementResult) {
+                            // Generate helpful error with fallback suggestions
+                            const fallbackSummary = await self_healing_locators_1.selfHealingLocators.getFallbackSummary(page, selector);
+                            throw new Error(`Element not found: ${selector}\n\n` +
+                                '🔧 Self-healing locators tried multiple fallback strategies but could not find the element.\n\n' +
+                                '💡 Troubleshooting suggestions:\n' +
+                                '  • Use find_selector to locate elements by text content\n' +
+                                '  • Verify the selector with get_content first\n' +
+                                '  • Ensure the page content has been analyzed\n' +
+                                '  • Check if the element is dynamically loaded\n' +
+                                '  • Wait for the element to appear using wait tool\n\n' +
+                                '🔧 Workflow validation ensures:\n' +
+                                '  • Content was analyzed before interaction\n' +
+                                '  • Selector is based on current page state\n\n' +
+                                fallbackSummary);
+                        }
+                        const { element, usedSelector, strategy } = elementResult;
+                        let strategyMessage = '';
+                        if (strategy !== 'primary') {
+                            strategyMessage = `\n🔄 Self-healing: Used ${strategy} fallback selector: ${usedSelector}`;
+                            console.warn(`Self-healing click: Primary selector '${selector}' failed, used '${usedSelector}' (${strategy})`);
+                        }
                         try {
-                            await page.$eval(selector, (el) => el.click());
+                            // Wait for element to be ready
+                            await page.waitForSelector(usedSelector, { timeout: 5000 });
+                            // Check element visibility and interaction options
+                            const boundingBox = await element.boundingBox();
+                            if (!boundingBox) {
+                                console.warn(`Element ${usedSelector} has no bounding box, attempting JavaScript click`);
+                                // Fallback to JavaScript click
+                                await page.$eval(usedSelector, (el) => el.click());
+                            }
+                            else {
+                                // Standard click with options
+                                if (waitForNavigation) {
+                                    await Promise.all([
+                                        page.waitForNavigation({ waitUntil: 'networkidle2' }),
+                                        page.click(usedSelector, options),
+                                    ]);
+                                }
+                                else {
+                                    await page.click(usedSelector, options);
+                                }
+                            }
                             return {
                                 content: [
                                     {
                                         type: 'text',
-                                        text: `Clicked element using JavaScript fallback: ${selector}`,
+                                        text: `Clicked element: ${usedSelector}${strategyMessage}\n\n✅ Interaction completed successfully through validated workflow`,
+                                    },
+                                ],
+                            };
+                        }
+                        catch (clickError) {
+                            // Final fallback: JavaScript click
+                            try {
+                                await page.$eval(usedSelector, (el) => el.click());
+                                return {
+                                    content: [
+                                        {
+                                            type: 'text',
+                                            text: `Clicked element using JavaScript fallback: ${usedSelector}${strategyMessage}\n\n✅ Interaction completed successfully through validated workflow`,
+                                        },
+                                    ],
+                                };
+                            }
+                            catch (jsClickError) {
+                                throw new Error(`Click failed on element found by self-healing locators: ${usedSelector}. ` +
+                                    `Original error: ${clickError instanceof Error ? clickError.message : String(clickError)}. ` +
+                                    `JavaScript fallback error: ${jsClickError instanceof Error ? jsClickError.message : String(jsClickError)}`);
+                            }
+                        }
+                    }, 3, 1000, 'click');
+                }, 'Failed to click element');
+            });
+        case 'type':
+            return await withWorkflowValidation('type', args, async () => {
+                return await withErrorHandling(async () => {
+                    const { page } = await initializeBrowser();
+                    const selector = args.selector;
+                    const text = args.text;
+                    const delay = args.delay || 100;
+                    // Try to find element using self-healing locators
+                    const elementResult = await self_healing_locators_1.selfHealingLocators.findElementWithFallbacks(page, selector);
+                    if (!elementResult) {
+                        // Generate helpful error with fallback suggestions
+                        const fallbackSummary = await self_healing_locators_1.selfHealingLocators.getFallbackSummary(page, selector);
+                        throw new Error(`Input element not found: ${selector}\n\n` +
+                            '🔧 Self-healing locators tried multiple fallback strategies but could not find the input element.\n\n' +
+                            '💡 Troubleshooting suggestions:\n' +
+                            '  • Use find_selector to locate input elements by text content or labels\n' +
+                            '  • Verify the selector with get_content first\n' +
+                            '  • Check for input elements inside forms or containers\n' +
+                            '  • Ensure the input field is visible and enabled\n\n' +
+                            fallbackSummary);
+                    }
+                    const { element, usedSelector, strategy } = elementResult;
+                    let strategyMessage = '';
+                    if (strategy !== 'primary') {
+                        strategyMessage = `\n🔄 Self-healing: Used ${strategy} fallback selector: ${usedSelector}`;
+                        console.warn(`Self-healing type: Primary selector '${selector}' failed, used '${usedSelector}' (${strategy})`);
+                    }
+                    try {
+                        // Wait for element to be ready and interactable
+                        await page.waitForSelector(usedSelector, { timeout: 5000 });
+                        // Focus on the element first
+                        await element.focus();
+                        // Clear existing content (cross-platform approach)
+                        await page.evaluate((sel) => {
+                            const el = document.querySelector(sel);
+                            if (el) {
+                                el.select();
+                                el.value = '';
+                            }
+                        }, usedSelector);
+                        // Type the new text
+                        await page.type(usedSelector, text, { delay });
+                        return {
+                            content: [
+                                {
+                                    type: 'text',
+                                    text: `Typed text into: ${usedSelector}${strategyMessage}\n\n✅ Text input completed successfully through validated workflow`,
+                                },
+                            ],
+                        };
+                    }
+                    catch (typeError) {
+                        // Fallback: Direct value assignment
+                        try {
+                            await page.evaluate((sel, inputText) => {
+                                const el = document.querySelector(sel);
+                                if (el) {
+                                    el.value = inputText;
+                                    el.dispatchEvent(new Event('input', { bubbles: true }));
+                                    el.dispatchEvent(new Event('change', { bubbles: true }));
+                                }
+                            }, usedSelector, text);
+                            return {
+                                content: [
+                                    {
+                                        type: 'text',
+                                        text: `Typed text using value assignment fallback: ${usedSelector}${strategyMessage}\n\n✅ Text input completed successfully through validated workflow`,
                                     },
                                 ],
                             };
                         }
                         catch (fallbackError) {
-                            throw new Error(`Click failed: ${error instanceof Error ? error.message : String(error)}. Fallback also failed: ${fallbackError instanceof Error ? fallbackError.message : String(fallbackError)}`);
+                            throw new Error(`Type failed on element found by self-healing locators: ${usedSelector}. ` +
+                                `Original error: ${typeError instanceof Error ? typeError.message : String(typeError)}. ` +
+                                `Value assignment fallback error: ${fallbackError instanceof Error ? fallbackError.message : String(fallbackError)}`);
                         }
                     }
-                }, 3, 1000, 'click');
-            }, 'Failed to click element');
-        case 'type':
-            return await withErrorHandling(async () => {
-                const { page } = await initializeBrowser();
-                // Clear existing content first
-                await page.click(args.selector);
-                await page.keyboard.down('Control');
-                await page.keyboard.press('A');
-                await page.keyboard.up('Control');
-                await page.keyboard.press('Backspace');
-                await page.type(args.selector, args.text, { delay: args.delay || 100 });
-                return {
-                    content: [
-                        {
-                            type: 'text',
-                            text: `Typed text into: ${args.selector}`,
-                        },
-                    ],
-                };
-            }, 'Failed to type text');
+                }, 'Failed to type text');
+            });
         case 'wait':
             return await withErrorHandling(async () => {
                 const { page } = await initializeBrowser();
-                switch (args.type) {
+                const { type, value, timeout = 30000, options = {} } = args;
+                let waitResult = '';
+                const startTime = Date.now();
+                switch (type) {
                     case 'selector':
-                        await page.waitForSelector(args.value, { timeout: args.timeout || 30000 });
+                        const selectorOptions = {
+                            timeout,
+                            visible: options.visible !== false, // Default to waiting for visible elements
+                            hidden: options.hidden === true,
+                            ...options
+                        };
+                        await page.waitForSelector(value, selectorOptions);
+                        waitResult = `Element found: ${value}`;
                         break;
                     case 'navigation':
-                        await page.waitForNavigation({ waitUntil: 'networkidle2', timeout: args.timeout || 30000 });
+                        const navOptions = {
+                            waitUntil: options.waitUntil || 'networkidle2',
+                            timeout,
+                            ...options
+                        };
+                        await page.waitForNavigation(navOptions);
+                        waitResult = `Navigation completed (${navOptions.waitUntil})`;
                         break;
                     case 'timeout':
-                        await (0, promises_1.setTimeout)(parseInt(args.value));
+                        await (0, promises_1.setTimeout)(parseInt(value));
+                        waitResult = `Waited ${value}ms`;
                         break;
+                    case 'function':
+                        // Wait for custom JavaScript function to return true
+                        const functionResult = await page.waitForFunction(value, { timeout, polling: options.polling || 'raf' });
+                        const result = await functionResult.jsonValue();
+                        waitResult = `Function condition met: ${result}`;
+                        break;
+                    case 'response':
+                        // Wait for specific HTTP response
+                        let responseReceived = false;
+                        const responsePromise = new Promise((resolve, reject) => {
+                            const timeoutId = setTimeout(() => {
+                                if (!responseReceived) {
+                                    reject(new Error(`Timeout waiting for response matching: ${value}`));
+                                }
+                            }, timeout);
+                            page.on('response', (response) => {
+                                if (response.url().includes(value) || response.url().match(new RegExp(value))) {
+                                    responseReceived = true;
+                                    clearTimeout(timeoutId);
+                                    resolve(response);
+                                }
+                            });
+                        });
+                        const response = await responsePromise;
+                        waitResult = `Response received for: ${value}`;
+                        break;
+                    case 'request':
+                        // Wait for specific HTTP request
+                        let requestSent = false;
+                        const requestPromise = new Promise((resolve, reject) => {
+                            const timeoutId = setTimeout(() => {
+                                if (!requestSent) {
+                                    reject(new Error(`Timeout waiting for request matching: ${value}`));
+                                }
+                            }, timeout);
+                            page.on('request', (request) => {
+                                if (request.url().includes(value) || request.url().match(new RegExp(value))) {
+                                    requestSent = true;
+                                    clearTimeout(timeoutId);
+                                    resolve(request);
+                                }
+                            });
+                        });
+                        const request = await requestPromise;
+                        waitResult = `Request sent for: ${value}`;
+                        break;
+                    case 'element_stable':
+                        // Wait for element to stop moving/changing position
+                        await page.waitForFunction((selector, stabilityTime) => {
+                            const element = document.querySelector(selector);
+                            if (!element)
+                                return false;
+                            // Store position data on the element
+                            if (!element._stabilityCheck) {
+                                element._stabilityCheck = {
+                                    lastRect: element.getBoundingClientRect(),
+                                    stableCount: 0,
+                                    startTime: Date.now()
+                                };
+                                return false;
+                            }
+                            const check = element._stabilityCheck;
+                            const currentRect = element.getBoundingClientRect();
+                            if (currentRect.x === check.lastRect.x &&
+                                currentRect.y === check.lastRect.y &&
+                                currentRect.width === check.lastRect.width &&
+                                currentRect.height === check.lastRect.height) {
+                                check.stableCount++;
+                            }
+                            else {
+                                check.stableCount = 0;
+                                check.startTime = Date.now();
+                            }
+                            check.lastRect = currentRect;
+                            // Element is stable if it hasn't moved for the required time
+                            return (Date.now() - check.startTime) >= stabilityTime;
+                        }, { timeout, polling: 100 }, value, options.stabilityTime || 1000);
+                        waitResult = `Element stable: ${value}`;
+                        break;
+                    case 'content_loaded':
+                        // Wait for dynamic content to finish loading
+                        await page.waitForFunction(() => {
+                            // Check for common loading indicators
+                            const loadingElements = document.querySelectorAll('.loading, .spinner, .loader, [data-loading="true"], [aria-busy="true"]');
+                            // Check for skeleton screens
+                            const skeletonElements = document.querySelectorAll('.skeleton, .shimmer, .placeholder-glow, [data-placeholder="true"]');
+                            return loadingElements.length === 0 && skeletonElements.length === 0;
+                        }, { timeout, polling: options.polling || 500 });
+                        waitResult = 'Dynamic content loaded';
+                        break;
+                    case 'network_idle':
+                        // Wait for network activity to stop - use browser's built-in networkidle
+                        await page.waitForLoadState ?
+                            page.waitForLoadState('networkidle', { timeout }) :
+                            page.waitForNavigation({ waitUntil: 'networkidle0', timeout });
+                        waitResult = `Network idle achieved`;
+                        break;
+                    default:
+                        throw new Error(`Unsupported wait type: ${type}`);
                 }
+                const duration = Date.now() - startTime;
                 return {
                     content: [
                         {
                             type: 'text',
-                            text: `Wait completed for ${args.type}: ${args.value}`,
+                            text: `✅ Wait completed: ${waitResult}\n⏱️  Duration: ${duration}ms\n🎯 Condition: ${type} - ${value}`,
                         },
                     ],
                 };
             }, 'Failed to wait');
         case 'browser_close':
-            return await withErrorHandling(async () => {
-                await closeBrowser();
-                return {
-                    content: [
-                        {
-                            type: 'text',
-                            text: 'Browser closed successfully',
-                        },
-                    ],
-                };
-            }, 'Failed to close browser');
+            return await withWorkflowValidation('browser_close', args, async () => {
+                return await withErrorHandling(async () => {
+                    await closeBrowser();
+                    // Reset workflow state when browser is closed
+                    workflow_validation_1.workflowValidator.reset();
+                    return {
+                        content: [
+                            {
+                                type: 'text',
+                                text: 'Browser closed successfully\n\n🔄 Workflow state reset - ready for new browser initialization',
+                            },
+                        ],
+                    };
+                }, 'Failed to close browser');
+            });
         case 'solve_captcha':
             return await withErrorHandling(async () => {
                 await initializeBrowser();
@@ -1474,74 +1930,281 @@ server.setRequestHandler(types_js_1.CallToolRequestSchema, async (request) => {
                 };
             }, 'Failed to perform random scrolling');
         case 'find_selector':
-            return await withErrorHandling(async () => {
-                const { page } = await initializeBrowser();
-                const { text, elementType = '*', exact = false } = args;
-                const selector = await page.evaluate((searchText, elType, exactMatch) => {
-                    // Function to generate unique CSS selector
-                    function getCssSelector(el) {
-                        const path = [];
-                        while (el && el.nodeType === Node.ELEMENT_NODE) {
-                            let selector = el.nodeName.toLowerCase();
-                            // Prefer ID
-                            if (el.id) {
-                                selector += '#' + CSS.escape(el.id);
-                                path.unshift(selector);
-                                break;
-                            }
-                            // Add classes if present
-                            if (el.className && typeof el.className === 'string') {
-                                const classes = el.className.trim().split(/\s+/);
-                                if (classes.length > 0 && classes[0]) {
-                                    selector += '.' + classes.map(c => CSS.escape(c)).join('.');
-                                }
-                            }
-                            // Add position among siblings if needed
-                            let sibling = el.previousElementSibling;
-                            let nth = 1;
-                            while (sibling) {
-                                if (sibling.nodeName.toLowerCase() === el.nodeName.toLowerCase()) {
-                                    nth++;
-                                }
-                                sibling = sibling.previousElementSibling;
-                            }
-                            if (nth > 1) {
-                                selector += ':nth-of-type(' + nth + ')';
-                            }
-                            path.unshift(selector);
-                            const parent = el.parentElement;
-                            if (!parent)
-                                break;
-                            el = parent;
+            return await withWorkflowValidation('find_selector', args, async () => {
+                return await withErrorHandling(async () => {
+                    const { page } = await initializeBrowser();
+                    const { text, elementType = '*', exact = false, includeHidden = false } = args;
+                    // Additional validation: Ensure content has been analyzed successfully
+                    const workflowContext = workflow_validation_1.workflowValidator.getContext();
+                    if (!workflowContext.contentAnalyzed || workflow_validation_1.workflowValidator.isContentAnalysisStale()) {
+                        throw new Error('Content analysis is required before searching for selectors.\n\n' +
+                            '💡 Please use get_content first. It will automatically try different modes if the page is large:\n' +
+                            '   • First attempt: contentMode="main" (extracts main content)\n' +
+                            '   • If too large: contentMode="summary" (page overview)\n' +
+                            '   • Last resort: contentMode="full" (entire page)\n\n' +
+                            `🔍 Current workflow state: ${workflowContext.currentState}\n` +
+                            `   Content analyzed: ${workflowContext.contentAnalyzed}\n` +
+                            `   Page URL: ${workflowContext.pageUrl || 'Unknown'}`);
+                    }
+                    const selector = await page.evaluate((searchText, elType, exactMatch, includeHidden) => {
+                        // Semantic role mappings for better element detection
+                        const SEMANTIC_ROLES = {
+                            button: ['button', '[role="button"]', 'input[type="button"]', 'input[type="submit"]', '.btn', '.button'],
+                            link: ['a', '[role="link"]', '.link'],
+                            input: ['input', 'textarea', '[role="textbox"]', '[contenteditable="true"]'],
+                            navigation: ['nav', '[role="navigation"]', '.nav', '.navigation'],
+                            heading: ['h1', 'h2', 'h3', 'h4', 'h5', 'h6', '[role="heading"]'],
+                            list: ['ul', 'ol', '[role="list"]', '.list'],
+                            article: ['article', '[role="article"]', '.article', '.post'],
+                            form: ['form', '[role="form"]', '.form'],
+                            // Special category for authentication elements
+                            auth: [
+                                'a[href*="login"]', 'a[href*="signin"]', 'a[href*="sign-in"]', 'a[href*="auth"]',
+                                'button:contains("Login")', 'button:contains("Sign in")', 'button:contains("Log in")',
+                                'button:contains("Sign In")', 'button:contains("Log In")',
+                                '[class*="login"]', '[class*="signin"]', '[class*="auth"]',
+                                '[id*="login"]', '[id*="signin"]', '[id*="auth"]'
+                            ]
+                        };
+                        // Get semantic role selectors for the element type
+                        function getSemanticSelectors(elType) {
+                            const normalizedType = elType.toLowerCase();
+                            return SEMANTIC_ROLES[normalizedType] || [elType];
                         }
-                        return path.join(' > ');
+                        // Enhanced CSS selector generation with semantic awareness
+                        function getCssSelector(el) {
+                            const path = [];
+                            let current = el;
+                            while (current && current.nodeType === Node.ELEMENT_NODE) {
+                                let selector = current.nodeName.toLowerCase();
+                                // Prefer ID (highest priority)
+                                if (current.id) {
+                                    selector += '#' + CSS.escape(current.id);
+                                    path.unshift(selector);
+                                    break;
+                                }
+                                // Add semantic role if present
+                                const role = current.getAttribute('role');
+                                if (role) {
+                                    selector += `[role="${role}"]`;
+                                }
+                                // Add meaningful classes (skip utility classes)
+                                if (current.className && typeof current.className === 'string') {
+                                    const classes = current.className.trim().split(/\s+/)
+                                        .filter(cls => cls && !isUtilityClass(cls))
+                                        .slice(0, 3); // Limit to first 3 meaningful classes
+                                    if (classes.length > 0) {
+                                        selector += '.' + classes.map(c => CSS.escape(c)).join('.');
+                                    }
+                                }
+                                // Add data attributes for better targeting
+                                const dataTestId = current.getAttribute('data-testid') || current.getAttribute('data-test');
+                                if (dataTestId) {
+                                    selector += `[data-testid="${dataTestId}"]`;
+                                }
+                                // Add aria-label for semantic context
+                                const ariaLabel = current.getAttribute('aria-label');
+                                if (ariaLabel && ariaLabel.length < 30) {
+                                    selector += `[aria-label="${ariaLabel}"]`;
+                                }
+                                // Add position among siblings only if necessary
+                                const siblings = Array.from(current.parentElement?.children || [])
+                                    .filter(sibling => sibling.nodeName.toLowerCase() === current.nodeName.toLowerCase());
+                                if (siblings.length > 1) {
+                                    const index = siblings.indexOf(current) + 1;
+                                    selector += `:nth-of-type(${index})`;
+                                }
+                                path.unshift(selector);
+                                const parent = current.parentElement;
+                                if (!parent)
+                                    break;
+                                current = parent;
+                                // Stop if we have a sufficiently unique selector
+                                if (path.length >= 3 || current.id)
+                                    break;
+                            }
+                            return path.join(' > ');
+                        }
+                        // Check if a class name is a utility class (should be ignored)
+                        function isUtilityClass(className) {
+                            const utilityPatterns = [
+                                /^(m|p)[trblxy]?-\d+$/, // margin/padding utilities
+                                /^(w|h)-\d+$/, // width/height utilities
+                                /^text-(xs|sm|lg|xl|\d+)$/, // text size utilities
+                                /^(flex|grid|block|inline)/, // layout utilities
+                                /^(bg|text|border)-(red|blue|green|gray|white|black)-\d+$/, // color utilities
+                                /^(rounded|shadow|opacity)-/, // appearance utilities
+                                /^(hidden|visible|sr-only)$/ // visibility utilities
+                            ];
+                            return utilityPatterns.some(pattern => pattern.test(className));
+                        }
+                        // Calculate element importance score
+                        function calculateElementScore(el, searchText, exactMatch) {
+                            let score = 0;
+                            let matchType = 'partial';
+                            let confidence = 0;
+                            const content = el.textContent?.trim() || '';
+                            const tagName = el.tagName.toLowerCase();
+                            // Text matching scoring
+                            if (exactMatch && content === searchText) {
+                                score += 100;
+                                matchType = 'exact';
+                                confidence = 0.95;
+                            }
+                            else if (!exactMatch && content.includes(searchText)) {
+                                score += 50;
+                                // Bonus for exact word match
+                                const words = content.toLowerCase().split(/\s+/);
+                                const searchWords = searchText.toLowerCase().split(/\s+/);
+                                const wordMatches = searchWords.filter(word => words.includes(word)).length;
+                                score += (wordMatches / searchWords.length) * 30;
+                                confidence = 0.7 + (wordMatches / searchWords.length) * 0.2;
+                            }
+                            // Semantic role bonus
+                            const role = el.getAttribute('role');
+                            if (role) {
+                                score += 20;
+                                matchType = 'role';
+                            }
+                            // Interactive element bonus
+                            if (['button', 'a', 'input', 'select', 'textarea'].includes(tagName)) {
+                                score += 15;
+                            }
+                            // ARIA attributes bonus
+                            const ariaLabel = el.getAttribute('aria-label');
+                            if (ariaLabel && (ariaLabel.includes(searchText) || searchText.includes(ariaLabel))) {
+                                score += 25;
+                                matchType = 'semantic';
+                                confidence += 0.1;
+                            }
+                            // Data attributes bonus
+                            const dataTestId = el.getAttribute('data-testid') || el.getAttribute('data-test');
+                            if (dataTestId && dataTestId.toLowerCase().includes(searchText.toLowerCase())) {
+                                score += 30;
+                                confidence += 0.15;
+                            }
+                            // Visibility and accessibility scoring
+                            if (!includeHidden) {
+                                const computedStyle = window.getComputedStyle(el);
+                                if (computedStyle.display === 'none' || computedStyle.visibility === 'hidden') {
+                                    score -= 50; // Heavily penalize hidden elements
+                                }
+                                if (computedStyle.opacity === '0') {
+                                    score -= 30; // Penalize invisible elements
+                                }
+                            }
+                            // Size relevance (avoid tiny elements)
+                            const rect = el.getBoundingClientRect();
+                            if (rect.width < 10 || rect.height < 10) {
+                                score -= 25;
+                            }
+                            // Prefer elements in main content areas
+                            const inMainContent = el.closest('main, article, .content, .main-content, #content, #main');
+                            if (inMainContent) {
+                                score += 10;
+                            }
+                            // Avoid elements in navigation, footer, ads
+                            const inNonContent = el.closest('nav, footer, .nav, .footer, .ads, .advertisement, .sidebar');
+                            if (inNonContent) {
+                                score -= 15;
+                            }
+                            return {
+                                element: el,
+                                score: Math.max(0, score),
+                                matchType,
+                                confidence: Math.min(0.99, confidence)
+                            };
+                        }
+                        // Enhanced element search with semantic awareness
+                        const semanticSelectors = getSemanticSelectors(elType);
+                        const allMatches = [];
+                        // Search using semantic selectors
+                        for (const semanticSelector of semanticSelectors) {
+                            try {
+                                const elements = Array.from(document.querySelectorAll(semanticSelector));
+                                for (const el of elements) {
+                                    const content = el.textContent || '';
+                                    const hasTextMatch = exactMatch
+                                        ? content.trim() === searchText
+                                        : content.includes(searchText);
+                                    // Also check aria-label and data attributes for semantic matching
+                                    const ariaLabel = el.getAttribute('aria-label') || '';
+                                    const dataTestId = el.getAttribute('data-testid') || el.getAttribute('data-test') || '';
+                                    const hasSemanticMatch = ariaLabel.toLowerCase().includes(searchText.toLowerCase()) ||
+                                        dataTestId.toLowerCase().includes(searchText.toLowerCase());
+                                    if (hasTextMatch || hasSemanticMatch) {
+                                        const scored = calculateElementScore(el, searchText, exactMatch);
+                                        allMatches.push(scored);
+                                    }
+                                }
+                            }
+                            catch (error) {
+                                // Continue with other selectors if one fails
+                                console.warn('Selector failed:', semanticSelector, error);
+                            }
+                        }
+                        // Remove duplicates and sort by score
+                        const uniqueMatches = allMatches.filter((match, index, arr) => arr.findIndex(m => m.element === match.element) === index);
+                        uniqueMatches.sort((a, b) => b.score - a.score);
+                        if (uniqueMatches.length === 0) {
+                            return null;
+                        }
+                        // Return the best match with metadata
+                        const bestMatch = uniqueMatches[0];
+                        const selector = getCssSelector(bestMatch.element);
+                        // Add debug info in development
+                        if (uniqueMatches.length > 1) {
+                            console.log(`Found ${uniqueMatches.length} matches, selected best with score ${bestMatch.score} (${bestMatch.matchType})`);
+                        }
+                        return selector;
+                    }, text, elementType, exact, includeHidden);
+                    if (!selector) {
+                        // Check if this might be an auth-related search
+                        const authKeywords = ['login', 'sign in', 'log in', 'signin', 'authenticate'];
+                        const isAuthSearch = authKeywords.some(keyword => text.toLowerCase().includes(keyword) || elementType === 'auth');
+                        let errorMessage = `No element found containing text: "${text}"\n\n` +
+                            '💡 Troubleshooting tips:\n' +
+                            '  • Verify the text exists on the current page\n' +
+                            '  • Try using partial text matching (exact=false)\n' +
+                            '  • Use get_content first to see available page content\n' +
+                            '  • Check if the element type filter is too restrictive\n\n';
+                        // Add auth-specific help if relevant
+                        if (isAuthSearch) {
+                            // Try to find auth elements
+                            const authElements = await findAuthElements(page);
+                            if (authElements.length > 0) {
+                                errorMessage += `\n🔐 Found ${authElements.length} potential authentication elements:\n`;
+                                authElements.slice(0, 5).forEach(sel => {
+                                    errorMessage += `   • ${sel}\n`;
+                                });
+                                errorMessage += '\n   Try clicking on one of these selectors directly.\n';
+                            }
+                        }
+                        errorMessage += `\n🔍 Search parameters:\n` +
+                            `   Text: "${text}"\n` +
+                            `   Element type: ${elementType}\n` +
+                            `   Exact match: ${exact}`;
+                        throw new Error(errorMessage);
                     }
-                    // Find all matching elements
-                    const elements = Array.from(document.querySelectorAll(elType));
-                    const matches = elements.filter(el => {
-                        const content = el.textContent || '';
-                        return exactMatch
-                            ? content.trim() === searchText
-                            : content.includes(searchText);
-                    });
-                    if (matches.length === 0) {
-                        return null;
-                    }
-                    // Return selector for first match
-                    return getCssSelector(matches[0]);
-                }, text, elementType, exact);
-                if (!selector) {
-                    throw new Error(`No element found containing text: "${text}"`);
-                }
-                return {
-                    content: [
-                        {
-                            type: 'text',
-                            text: selector,
-                        },
-                    ],
-                };
-            }, 'Failed to find selector');
+                    // Add workflow guidance about successful selector finding
+                    const successMessage = '\n\n✅ Selector found successfully! You can now:\n' +
+                        '  • Use this selector with click, type, or other interaction tools\n' +
+                        '  • Verify the element with get_content using the selector\n' +
+                        '  • Continue with your automation workflow\n\n' +
+                        '🔧 Workflow validation ensured:\n' +
+                        '  • Content was analyzed before selector search\n' +
+                        '  • No blind guessing - element location is based on current page content\n' +
+                        '  • Selector generated from actual DOM structure';
+                    return {
+                        content: [
+                            {
+                                type: 'text',
+                                text: selector + successMessage,
+                            },
+                        ],
+                    };
+                }, 'Failed to find selector');
+            });
         default:
             throw new Error(`Unknown tool: ${name}`);
     }
