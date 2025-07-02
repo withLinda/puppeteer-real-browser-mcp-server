@@ -36,9 +36,175 @@ IMPORTANT: Never skip the web research phase. Always state what you're web resea
 - If something is not working, please debug it instead of looking for alternatives
 - if something is not possible, please explain why it is not possible instead of looking for alternatives
 
-## 🧪 Testing Guidelines
+## 🧪 Test-Driven Development (TDD) Workflow
 
-### Chrome Process Management
+### Core TDD Principles (Red-Green-Refactor)
+
+TDD follows a strict three-phase cycle for every feature:
+
+```
+🔴 RED    →  🟢 GREEN  →  🔵 REFACTOR
+Write      Make it      Make it
+failing    work         better
+test       (minimal)    (clean)
+  ↑                        ↓
+  ←←←←←←←←←←←←←←←←←←←←←←←←←←←←
+```
+
+#### Phase 1: 🔴 RED - Write a Failing Test
+- Write the smallest possible test that fails
+- Test only one behavior at a time
+- Focus on the "what" not the "how"
+- Make sure the test actually fails (run it!)
+
+#### Phase 2: 🟢 GREEN - Make It Work
+- Write the minimum code to make the test pass
+- Don't worry about perfect design yet
+- Avoid adding extra features
+- Make sure ALL tests pass
+
+#### Phase 3: 🔵 REFACTOR - Make It Better
+- Improve code structure and readability
+- Extract methods and classes
+- Remove duplication
+- Run tests after each change
+- Stop if tests turn red
+
+### TDD Testing Hierarchy for MCP Servers
+
+```
+    /\     E2E Tests (Few)
+   /  \    - Full MCP protocol communication
+  /____\   - Real AI client interactions
+ /      \  
+/________\  Integration Tests (Some)
+          - MCP server + tools interaction
+          - Protocol message handling
+
+________________ Unit Tests (Many)
+               - Individual tool functions
+               - Utility functions
+               - Request/response parsing
+```
+
+### TDD Development Workflow
+
+#### Daily Development (TDD Cycles)
+1. **Start watch mode**: `npm run test:watch`
+2. **Write failing test** for smallest feature
+3. **See red** in terminal immediately
+4. **Write minimal code** to pass
+5. **See green** automatically
+6. **Refactor** with instant feedback
+7. **Commit** only when all tests pass
+
+#### Testing Levels for MCP Servers
+
+**Level 1: Unit Tests (Fast TDD Cycles)**
+- Test against TypeScript source during development
+- Perfect for red-green-refactor cycles
+- Instant feedback for individual functions
+
+**Level 2: Integration Tests (Build Verification)**
+- Test against `/dist` folder after compilation
+- Verify MCP protocol compliance
+- Test tool interactions
+
+**Level 3: Package Testing (Pre-publish)**
+- Use `npm pack` to create test package
+- Install and test locally before publishing
+- Simulate real user installation
+
+### MCP-Specific TDD Patterns
+
+#### Testing MCP Protocol Compliance
+```typescript
+describe('MCP Protocol Compliance', () => {
+  it('should respond to initialize with correct structure', async () => {
+    const request = {
+      jsonrpc: '2.0',
+      id: 1,
+      method: 'initialize',
+      params: { protocolVersion: '0.1.0' }
+    };
+    
+    const response = await server.handleRequest(request);
+    
+    expect(response).toMatchObject({
+      jsonrpc: '2.0',
+      id: 1,
+      result: {
+        protocolVersion: expect.stringMatching(/^\d+\.\d+\.\d+$/),
+        capabilities: expect.objectContaining({
+          tools: expect.any(Object)
+        })
+      }
+    });
+  });
+});
+```
+
+#### Testing Individual Tools
+```typescript
+describe('ScreenshotTool', () => {
+  it('should return valid screenshot data', async () => {
+    const result = await tool.execute({ 
+      url: 'https://example.com',
+      fullPage: false 
+    });
+    
+    expect(result.success).toBe(true);
+    expect(result.screenshot).toMatch(/^data:image\/png;base64,/);
+  });
+  
+  it('should validate URL input', async () => {
+    await expect(tool.execute({ 
+      url: 'invalid-url',
+      fullPage: false 
+    })).rejects.toThrow('Invalid URL');
+  });
+});
+```
+
+### TDD Commit Strategy (RGRC Pattern)
+
+```
+🔴 RED → 🟢 GREEN → 🔵 REFACTOR → 📝 COMMIT
+```
+
+**When to Commit:**
+- ✅ All tests pass (green state)
+- ✅ Code is clean and refactored
+- ✅ Complete TDD cycle finished
+
+**Never Commit When:**
+- ❌ Tests are failing (red state)
+- ❌ Code is half-refactored
+- ❌ Build is broken
+
+### Testing Scripts for MCP Development
+
+Add to `package.json`:
+```json
+{
+  "scripts": {
+    "test": "vitest",
+    "test:watch": "vitest --watch",
+    "test:ui": "vitest --ui",
+    "test:coverage": "vitest --coverage",
+    "test:ci": "vitest run --coverage",
+    "test:dist": "node scripts/test-dist.js",
+    "test:package": "./scripts/test-package.sh",
+    "test:all": "npm run test:ci && npm run test:dist && npm run test:package",
+    "build": "tsc -p tsconfig.build.json",
+    "prepack": "npm run build && npm run test:ci",
+    "prepublishOnly": "npm run test:all"
+  }
+}
+```
+
+### Chrome Process Management for MCP Testing
+
 When running tests for the puppeteer-real-browser MCP server:
 
 1. **ALWAYS check for zombie Chrome processes before running tests:**
@@ -57,17 +223,30 @@ When running tests for the puppeteer-real-browser MCP server:
    ```
    - Should return 0 or very few processes
 
-### Test Execution Order
-1. Clean zombie processes first
-2. Run tests: `npm run test:all`
-3. Verify no zombie processes remain
-4. If zombies persist, force cleanup again
+### Complete TDD Test Execution Order
+1. Clean zombie Chrome processes first
+2. Start TDD watch mode: `npm run test:watch`
+3. Follow Red-Green-Refactor cycles
+4. Build and test distribution: `npm run build && npm run test:dist`
+5. Commit only when all tests pass
+6. Before publishing: `npm run test:all`
+7. Verify no zombie processes remain
 
-### Why This Matters
-- Zombie Chrome processes can interfere with new test runs
-- They consume system resources
-- They can cause port conflicts and browser initialization failures
-- Our enhanced closeBrowser() function helps but manual cleanup ensures clean test environment
+### Why TDD Matters for MCP Servers
+- **Better Design**: TDD forces you to think about MCP server interface before implementation
+- **Faster Feedback**: Immediate feedback when MCP protocol implementation breaks
+- **Higher Confidence**: Comprehensive test coverage ensures server works reliably with Claude
+- **Easier Refactoring**: Safe to improve server architecture without breaking functionality
+- **Living Documentation**: Tests serve as documentation of expected MCP server behavior
+
+### Common TDD Pitfalls to Avoid
+- Writing tests that are too large (test one behavior at a time)
+- Testing implementation instead of behavior
+- Skipping the red phase (ensure tests actually fail first)
+- Not refactoring after getting to green
+- Poor test organization (use nested describe blocks)
+- Not running tests frequently (use watch mode)
+- Mocking too much or too little (balance real vs test doubles)
 
 # Claude Behavior Instructions: Specificity Over Assumptions
 

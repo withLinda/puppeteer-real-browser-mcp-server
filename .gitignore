@@ -117,3 +117,5 @@ private/
 # Temporary documentation
 STACK_OVERFLOW_FIX.md
 WORKFLOW_VALIDATION_ISSUE.md
+TDD-specific-workflow-tutorial.md
+test-resilient-content.md

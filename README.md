@@ -389,15 +389,6 @@ Alternative paths to try:
 ```
 Alternative paths: `/usr/bin/chromium-browser`, `/snap/bin/chromium`
 
-#### Cursor IDE vs Claude Desktop Configuration Differences
-
-| Aspect | Claude Desktop | Cursor IDE |
-|--------|---------------|------------|
-| **Config Location** | `%APPDATA%\Claude\claude_desktop_config.json` | `~/.cursor/mcp.json` or `.cursor/mcp.json` |
-| **Setup Method** | Manual JSON editing | One-click install OR manual JSON |
-| **Authentication** | None required | OAuth support available |
-| **Environment Variables** | Limited support | Full environment variable support |
-| **Chrome Path Detection** | Automatic | May require manual configuration |
 
 #### Testing Cursor IDE Setup
 
