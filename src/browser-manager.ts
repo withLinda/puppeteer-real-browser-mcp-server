@@ -6,7 +6,6 @@ import * as net from 'net';
 // Content prioritization configuration
 export interface ContentPriorityConfig {
   prioritizeContent: boolean;
-  fallbackToScreenshots: boolean;
   autoSuggestGetContent: boolean;
 }
 
@@ -38,7 +37,6 @@ const disableContentPriority = process.env.DISABLE_CONTENT_PRIORITY === 'true' |
 
 let contentPriorityConfig: ContentPriorityConfig = {
   prioritizeContent: !disableContentPriority,
-  fallbackToScreenshots: disableContentPriority,
   autoSuggestGetContent: !disableContentPriority
 };
 

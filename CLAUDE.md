@@ -1,5 +1,4 @@
- please use puppeteer-real-browser tool to open https://www.upwork.com/ find 
-  the login link and let me type the username and password manually# Project Instructions for Claude Code
+# Project Instructions for Claude Code
 
 ## MANDATORY: Research-First Development
 
@@ -182,6 +181,328 @@ describe('ScreenshotTool', () => {
 - ❌ Tests are failing (red state)
 - ❌ Code is half-refactored
 - ❌ Build is broken
+
+## 📝 CRITICAL: Detailed Commit Message Requirements
+
+### MANDATORY: Comprehensive Commit Documentation
+Every commit MUST include detailed technical documentation to prevent recurring issues and regressions.
+
+#### Commit Message Structure (REQUIRED):
+```
+fix/feat/chore: Brief summary of the change
+
+## 🔍 ROOT CAUSE ANALYSIS (REQUIRED for fixes)
+### The Problem:
+- Detailed description of the exact issue
+- Technical root cause explanation
+- Why this occurred (environmental factors, configuration, etc.)
+
+### Impact:
+- What was broken or not working
+- User experience impact
+- System behavior before fix
+
+## 🛠️ SOLUTION IMPLEMENTED (REQUIRED)
+### Technical Changes:
+- Specific code changes made
+- Configuration modifications
+- Before/after comparisons with code examples
+
+### Why This Works:
+- Technical explanation of the solution
+- How it addresses the root cause
+- Integration with existing systems
+
+## 🚨 PREVENTION MEASURES (REQUIRED for recurring issues)
+### To Prevent Future Regression:
+- Specific patterns to follow
+- Code patterns to avoid
+- Configuration best practices
+- Testing requirements
+
+### Code Patterns to Remember:
+```typescript
+// Example of correct pattern
+const config = {
+  setting: false, // CRITICAL: Must be false
+  // ... explanation
+};
+```
+
+## 🔗 RELATED ISSUES/COMMITS (REQUIRED if applicable)
+- Previous fixes for same issue
+- Related commits or PRs
+- GitHub issue numbers
+
+## 🎯 TESTING VERIFIED (REQUIRED)
+- Specific tests that now pass
+- Manual verification steps performed
+- Expected behavior confirmed
+```
+
+#### Why Detailed Commits Are Critical:
+
+1. **Prevent Recurring Mistakes**
+   - Document exact technical causes
+   - Provide clear before/after patterns
+   - Reference previous fixes to avoid cycles
+
+2. **Knowledge Transfer**
+   - Future developers understand context
+   - Debugging becomes faster
+   - Pattern recognition improves
+
+3. **Regression Prevention**
+   - Clear patterns to follow/avoid
+   - Testable verification steps
+   - Historical context for decisions
+
+4. **Project Memory**
+   - Institutional knowledge preservation
+   - Audit trail for complex issues
+   - Pattern documentation for common problems
+
+### Special Requirements for This Project:
+
+#### Browser Configuration Issues:
+- **ALWAYS document** chrome-launcher configuration patterns
+- **ALWAYS explain** why specific flags are needed
+- **ALWAYS reference** previous commits for recurring issues
+- **ALWAYS include** before/after code examples
+
+#### Testing and Performance:
+- **DOCUMENT** test timeout reasoning with research sources
+- **EXPLAIN** performance optimization decisions
+- **REFERENCE** browser compatibility requirements
+
+#### MCP Protocol Changes:
+- **DETAIL** protocol compliance implications
+- **EXPLAIN** client compatibility considerations
+- **DOCUMENT** error handling improvements
+
+Remember: **Every commit is documentation for future you and your team. Write commits that will help prevent the same mistake from happening again.**
+
+## 🚨 CRITICAL: Recurring Issue Prevention Patterns
+
+### Based on Historical Analysis of 50+ Commits
+
+After analyzing the complete commit history, these are the **TOP 5 RECURRING MISTAKES** that Claude Code must never repeat:
+
+---
+
+### ❌ **MISTAKE #1: Double Browser Launch Configuration**
+**OCCURS:** Every few months | **LAST:** July 4, 2025 & June 27, 2025
+
+#### The Problem Pattern:
+```typescript
+// ❌ WRONG (causes double browser launch):
+const chromeConfig = {
+  ignoreDefaultFlags: true  // Creates TWO browsers: NOT-REAL + REAL
+};
+```
+
+#### ✅ MANDATORY Prevention Rule:
+```typescript
+// ✅ ALWAYS USE THIS PATTERN:
+const chromeConfig = {
+  ignoreDefaultFlags: false,  // CRITICAL: Must be false
+  chromeFlags: [
+    '--no-first-run',
+    '--no-default-browser-check', 
+    '--disable-default-apps',
+    '--start-maximized',
+    '--disable-blink-features=AutomationControlled'
+  ]
+};
+```
+
+**WHY IT HAPPENS:** `ignoreDefaultFlags: true` forces chrome-launcher to create a fallback browser instance, while puppeteer-real-browser creates its own → TWO BROWSERS
+
+**PREVENTION RULE:** ALWAYS search codebase for ALL instances of `ignoreDefaultFlags` and ensure they're ALL set to `false`. Check fallback strategies too!
+
+---
+
+### ❌ **MISTAKE #2: Maximum Call Stack Size Exceeded**
+**OCCURS:** Multiple times | **LAST:** June 29, 2025
+
+#### The Problem Pattern:
+```typescript
+// ❌ WRONG (causes infinite recursion):
+async function withRetry(fn) {
+  try {
+    return await fn();
+  } catch (error) {
+    return withRetry(fn); // INFINITE LOOP!
+  }
+}
+```
+
+#### ✅ MANDATORY Prevention Rule:
+```typescript
+// ✅ ALWAYS USE DEPTH TRACKING:
+async function withRetry(fn, depth = 0, maxDepth = 3) {
+  if (depth >= maxDepth) {
+    throw new Error(`Max retry depth ${maxDepth} exceeded`);
+  }
+  
+  try {
+    return await fn();
+  } catch (error) {
+    return withRetry(fn, depth + 1, maxDepth);
+  }
+}
+```
+
+**WHY IT HAPPENS:** Retry logic without depth counters, browser initialization loops, session validation recursion
+
+**PREVENTION RULE:** EVERY retry function MUST have explicit depth tracking with maximum limits!
+
+---
+
+### ❌ **MISTAKE #3: Windows Chrome Path Detection Failures**
+**OCCURS:** Repeatedly | **FIXED:** v1.3.0 (June 29, 2025)
+
+#### The Problem Pattern:
+```bash
+# ❌ THESE KEEP FAILING:
+Error: connect ECONNREFUSED 127.0.0.1:60725
+Chrome not found at standard location
+```
+
+#### ✅ MANDATORY Prevention Rule:
+```typescript
+// ✅ COMPREHENSIVE CHROME DETECTION REQUIRED:
+const chromeDetectionPaths = [
+  'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe',
+  'C:\\Program Files (x86)\\Google\\Chrome\\Application\\chrome.exe',
+  process.env.LOCALAPPDATA + '\\Google\\Chrome\\Application\\chrome.exe',
+  process.env.CHROME_PATH,
+  process.env.PUPPETEER_EXECUTABLE_PATH
+  // ... Registry detection + 15+ more paths
+];
+```
+
+**WHY IT HAPPENS:** Windows has dozens of Chrome installation variations, registry detection needed
+
+**PREVENTION RULE:** NEVER assume standard Chrome paths. ALWAYS implement comprehensive detection with registry fallback!
+
+---
+
+### ❌ **MISTAKE #4: MCP Server Initialization Crashes**
+**OCCURS:** Frequently | **LAST:** July 5, 2025
+
+#### The Problem Pattern:
+```typescript
+// ❌ MISSING HANDLER CAUSES CRASH:
+server.setRequestHandler(CallToolRequestSchema, async (request) => {
+  // Only handles some tools, missing others
+});
+// Missing: InitializeRequestSchema handler!
+```
+
+#### ✅ MANDATORY Prevention Rule:
+```typescript
+// ✅ COMPLETE MCP PROTOCOL IMPLEMENTATION:
+server.setRequestHandler(InitializeRequestSchema, async (request) => {
+  return {
+    protocolVersion: "0.1.0",
+    capabilities: { tools: {} }
+  };
+});
+
+server.setRequestHandler(CallToolRequestSchema, async (request) => {
+  // Handle ALL tools
+});
+
+server.setRequestHandler(ListToolsRequestSchema, async () => {
+  return { tools: TOOLS };
+});
+```
+
+**WHY IT HAPPENS:** MCP protocol requires specific handlers, missing any causes "Server transport closed unexpectedly"
+
+**PREVENTION RULE:** EVERY MCP protocol update MUST verify ALL required handlers are implemented!
+
+---
+
+### ❌ **MISTAKE #5: ES Module vs CommonJS Conflicts**
+**OCCURS:** Regularly | **LAST:** July 4, 2025
+
+#### The Problem Pattern:
+```typescript
+// ❌ MIXED MODULE SYSTEMS:
+const { spawn } = require('child_process'); // CommonJS
+import { Server } from '@modelcontextprotocol/sdk'; // ES Module
+// Error: require is not defined
+```
+
+#### ✅ MANDATORY Prevention Rule:
+```typescript
+// ✅ CONSISTENT ES MODULES:
+import { spawn } from 'child_process';
+import { Server } from '@modelcontextprotocol/sdk/server/index.js';
+
+// For dynamic imports:
+const module = await import('module-name');
+```
+
+**WHY IT HAPPENS:** Node.js evolution, package.json `"type": "module"` requires consistent import syntax
+
+**PREVENTION RULE:** NEVER mix require() and import(). Check package.json type field and use consistent module syntax!
+
+---
+
+## 🛡️ **MANDATORY Pre-Commit Checklist**
+
+Before EVERY commit, Claude Code MUST verify:
+
+### Browser Configuration:
+- [ ] `ignoreDefaultFlags: false` in ALL browser configurations
+- [ ] Chrome flags include `--no-first-run`, `--no-default-browser-check`, `--disable-default-apps`
+- [ ] Search codebase: `grep -r "ignoreDefaultFlags" . --include="*.ts"`
+
+### Recursion Prevention:
+- [ ] ALL retry functions have explicit depth parameters
+- [ ] Maximum depth limits are enforced (usually 3)
+- [ ] Circuit breaker patterns implemented for browser operations
+
+### Windows Compatibility:
+- [ ] Chrome detection includes registry + environment variables
+- [ ] Timeout values are platform-specific (120s Windows, 90s others)
+- [ ] ECONNREFUSED fallback strategies implemented
+
+### MCP Protocol:
+- [ ] ALL required handlers implemented: Initialize, CallTool, ListTools
+- [ ] Protocol version compatibility verified
+- [ ] Error handling for all uncaught exceptions
+
+### Module System:
+- [ ] Consistent import/export syntax (no mixed require/import)
+- [ ] Dynamic imports use `await import()` syntax
+- [ ] Package.json type field respected
+
+## 🔍 **Pattern Recognition Commands**
+
+Use these commands to detect recurring patterns:
+
+```bash
+# Check for double browser patterns:
+grep -r "ignoreDefaultFlags" . --include="*.ts"
+
+# Check for infinite recursion risks:
+grep -r "withRetry\|retry" . --include="*.ts" | grep -v "depth\|maxRetry"
+
+# Check for Windows compatibility gaps:
+grep -r "chrome.exe\|CHROME_PATH" . --include="*.ts"
+
+# Check for MCP handler completeness:
+grep -r "setRequestHandler" . --include="*.ts"
+
+# Check for module system consistency:
+grep -r "require(" . --include="*.ts"
+```
+
+**CRITICAL:** Run these checks BEFORE implementing any browser, retry, or MCP-related changes!
 
 ### Testing Scripts for MCP Development
 

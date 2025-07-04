@@ -459,7 +459,6 @@ describe('Browser Manager', () => {
       // Assert: Should return configuration object
       expect(config).toBeDefined();
       expect(config).toHaveProperty('prioritizeContent');
-      expect(config).toHaveProperty('fallbackToScreenshots');
       expect(config).toHaveProperty('autoSuggestGetContent');
     });
 
@@ -474,7 +473,6 @@ describe('Browser Manager', () => {
       
       // Assert: Should reflect updates
       expect(updatedConfig.prioritizeContent).toBe(updates.prioritizeContent);
-      expect(updatedConfig.fallbackToScreenshots).toBe(initialConfig.fallbackToScreenshots);
       expect(updatedConfig.autoSuggestGetContent).toBe(initialConfig.autoSuggestGetContent);
     });
   });

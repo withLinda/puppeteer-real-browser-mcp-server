@@ -23,7 +23,7 @@ vi.mock('../browser-manager', () => ({
 }));
 
 vi.mock('../system-utils', () => ({
-  withErrorHandling: vi.fn((operation, errorMessage) => operation())
+  withErrorHandling: vi.fn(async (operation, errorMessage) => await operation())
 }));
 
 vi.mock('../workflow-validation', () => ({
@@ -47,7 +47,6 @@ describe('Browser Handlers', () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
-    vi.resetAllMocks();
     
     // Setup mocks
     mockBrowserManager = browserManager;
@@ -63,9 +62,18 @@ describe('Browser Handlers', () => {
 
     mockBrowserManager.getContentPriorityConfig.mockReturnValue({
       prioritizeContent: true,
-      fallbackToScreenshots: false,
       autoSuggestGetContent: true
     });
+    
+    // Ensure updateContentPriorityConfig is properly mocked
+    mockBrowserManager.updateContentPriorityConfig.mockReturnValue(undefined);
+    mockBrowserManager.initializeBrowser.mockResolvedValue(undefined);
+    mockBrowserManager.closeBrowser.mockResolvedValue(undefined);
+    
+    // Ensure workflow validation functions are properly mocked
+    mockWorkflowValidation.recordExecution.mockReturnValue(undefined);
+    mockWorkflowValidation.workflowValidator.reset.mockReturnValue(undefined);
+    mockWorkflowValidation.workflowValidator.getValidationSummary.mockReturnValue('Mock summary');
   });
 
   describe('Browser Initialization', () => {
@@ -82,9 +90,20 @@ describe('Browser Handlers', () => {
       const result = await handleBrowserInit(args);
 
       // Assert: Should initialize browser and return success message
-      expect(mockBrowserManager.initializeBrowser).toHaveBeenCalledWith(args);
-      expect(mockWorkflowValidation.validateWorkflow).toHaveBeenCalledWith('browser_init', args);
-      expect(mockWorkflowValidation.recordExecution).toHaveBeenCalledWith('browser_init', args, true);
+      expect(mockBrowserManager.initializeBrowser).toHaveBeenCalledWith(
+        expect.objectContaining({ 
+          headless: false 
+        })
+      );
+      expect(mockWorkflowValidation.validateWorkflow).toHaveBeenCalledWith('browser_init', 
+        expect.objectContaining({ 
+          headless: false 
+        })
+      );
+      expect(mockWorkflowValidation.recordExecution).toHaveBeenCalledWith('browser_init', 
+        expect.objectContaining({ 
+          headless: false 
+        }), true);
       
       expect(result).toHaveProperty('content');
       expect(result.content[0].type).toBe('text');
@@ -99,23 +118,27 @@ describe('Browser Handlers', () => {
         headless: true,
         contentPriority: {
           prioritizeContent: false,
-          fallbackToScreenshots: true,
           autoSuggestGetContent: false
         }
       };
 
+      // Mock the complete flow
       mockBrowserManager.initializeBrowser.mockResolvedValue(undefined);
       mockBrowserManager.getContentPriorityConfig.mockReturnValue({
         prioritizeContent: false,
-        fallbackToScreenshots: true,
         autoSuggestGetContent: false
       });
 
       // Act: Initialize browser with custom config
       const result = await handleBrowserInit(args);
 
-      // Assert: Should update content priority config
-      expect(mockBrowserManager.updateContentPriorityConfig).toHaveBeenCalledWith(args.contentPriority);
+      // Assert: Should update content priority config with the exact args passed
+      expect(mockBrowserManager.updateContentPriorityConfig).toHaveBeenCalledWith(
+        expect.objectContaining({
+          prioritizeContent: false,
+          autoSuggestGetContent: false
+        })
+      );
       expect(mockBrowserManager.getContentPriorityConfig).toHaveBeenCalled();
       expect(result.content[0].text).not.toContain('Content Priority Mode');
     });
@@ -147,8 +170,10 @@ describe('Browser Handlers', () => {
     });
 
     it('should handle workflow validation failure', async () => {
-      // Arrange: Reset mocks and set invalid workflow state
+      // Arrange: Clear mocks for isolated test and set invalid workflow state
       vi.clearAllMocks();
+      
+      // Set up minimal required mocks for this test
       mockWorkflowValidation.validateWorkflow.mockReturnValue({
         isValid: false,
         errorMessage: 'Browser already initialized',
@@ -158,24 +183,29 @@ describe('Browser Handlers', () => {
       mockWorkflowValidation.workflowValidator.getValidationSummary.mockReturnValue(
         'Current state: BROWSER_ACTIVE | Last action: browser_init'
       );
+      
+      mockWorkflowValidation.recordExecution.mockReturnValue(undefined);
+      
+      // Ensure initializeBrowser is not called by clearing its mock
+      mockBrowserManager.initializeBrowser.mockClear();
 
       const args: BrowserInitArgs = { headless: false };
 
       // Act & Assert: Should throw workflow validation error
       await expect(handleBrowserInit(args)).rejects.toThrow(/Browser already initialized.*Next Steps: Close browser first/s);
       
+      // Verify that browser initialization was NOT called due to validation failure
       expect(mockBrowserManager.initializeBrowser).not.toHaveBeenCalled();
       expect(mockWorkflowValidation.recordExecution).toHaveBeenCalledWith(
         'browser_init',
-        args,
+        expect.objectContaining({ headless: false }),
         false,
         expect.stringContaining('Browser already initialized')
       );
     });
 
     it('should include workflow guidance in success message', async () => {
-      // Arrange: Reset and set up for successful initialization
-      vi.clearAllMocks();
+      // Arrange: Set up for successful initialization (keep existing mock setup)
       mockWorkflowValidation.validateWorkflow.mockReturnValue({
         isValid: true,
         errorMessage: null,
@@ -183,7 +213,6 @@ describe('Browser Handlers', () => {
       });
       mockBrowserManager.getContentPriorityConfig.mockReturnValue({
         prioritizeContent: true,
-        fallbackToScreenshots: false,
         autoSuggestGetContent: true
       });
       

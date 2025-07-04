@@ -22,7 +22,6 @@ export const MAX_BROWSER_INIT_DEPTH = 2;
 // Content prioritization configuration interface
 export interface ContentPriorityConfig {
   prioritizeContent: boolean;
-  fallbackToScreenshots: boolean;
   autoSuggestGetContent: boolean;
 }
 
@@ -32,7 +31,6 @@ const disableContentPriority = process.env.DISABLE_CONTENT_PRIORITY === 'true' |
 
 export const DEFAULT_CONTENT_PRIORITY_CONFIG: ContentPriorityConfig = {
   prioritizeContent: !disableContentPriority,
-  fallbackToScreenshots: disableContentPriority,
   autoSuggestGetContent: !disableContentPriority
 };
 
@@ -89,21 +87,16 @@ export const TOOLS = [
         },
         contentPriority: {
           type: 'object',
-          description: 'Configuration for prioritizing get_content over screenshots',
+          description: 'Configuration for content-first workflow enforcement',
           properties: {
             prioritizeContent: {
               type: 'boolean',
-              description: 'Prioritize get_content method over screenshots for better reliability',
+              description: 'Prioritize get_content method for better reliability and workflow enforcement',
               default: true,
-            },
-            fallbackToScreenshots: {
-              type: 'boolean',
-              description: 'Allow fallback to screenshots when get_content is insufficient',
-              default: false,
             },
             autoSuggestGetContent: {
               type: 'boolean',
-              description: 'Automatically suggest get_content alternatives when screenshots fail',
+              description: 'Automatically suggest get_content alternatives when other methods fail',
               default: true,
             },
           },

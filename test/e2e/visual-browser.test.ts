@@ -219,7 +219,6 @@ describe.sequential('E2E Visual Browser Tests', () => {
           disableXvfb: true,
           contentPriority: {
             prioritizeContent: true,
-            fallbackToScreenshots: false,
             autoSuggestGetContent: true
           }
         });
