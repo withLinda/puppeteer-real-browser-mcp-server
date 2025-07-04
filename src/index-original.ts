@@ -9,15 +9,15 @@ import {
   InitializeRequestSchema,
 } from '@modelContextProtocol/sdk/types.js';
 import { connect } from 'puppeteer-real-browser';
-import { randomScroll } from './stealth-actions';
+import { randomScroll } from './stealth-actions.js';
 import { setTimeout as sleep } from 'node:timers/promises';
 import * as fs from 'fs';
 import * as path from 'path';
 import * as net from 'net';
-import { validateWorkflow, recordExecution, workflowValidator } from './workflow-validation';
-import { contentStrategy } from './content-strategy';
-import { tokenManager } from './token-management';
-import { selfHealingLocators } from './self-healing-locators';
+import { validateWorkflow, recordExecution, workflowValidator } from './workflow-validation.js';
+import { contentStrategy } from './content-strategy.js';
+import { tokenManager } from './token-management.js';
+import { selfHealingLocators } from './self-healing-locators.js';
 
 // Store browser instance
 let browserInstance: any = null;
@@ -615,7 +615,7 @@ async function initializeBrowser(options?: any) {
     if (isWindows) {
       // Enhanced Windows-specific flags for better compatibility
       const windowsFlags = [
-        '--no-sandbox', // Critical for Windows environments
+        // '--no-sandbox' removed for security - using ignoreDefaultFlags instead
         '--disable-gpu', // Prevent GPU-related crashes on Windows
         '--disable-gpu-sandbox',
         '--disable-software-rasterizer',
@@ -660,7 +660,7 @@ async function initializeBrowser(options?: any) {
       // Non-Windows flags
       return [
         ...baseFlags,
-        '--no-sandbox',
+        // '--no-sandbox' removed for security - using ignoreDefaultFlags instead
         '--disable-features=VizDisplayCompositor',
         '--start-maximized',
       ];
@@ -799,9 +799,9 @@ async function initializeBrowser(options?: any) {
     createConnectionStrategy('Minimal Configuration', {
       customConfig: {
         chromeFlags: [
-          '--no-sandbox', 
+          // '--no-sandbox' removed for security - using ignoreDefaultFlags instead
           '--disable-dev-shm-usage', 
-          '--disable-setuid-sandbox',
+          // '--disable-setuid-sandbox' removed for security
           '--remote-debugging-port=0'
         ]
       }
@@ -1091,8 +1091,8 @@ const TOOLS = [
         },
         ignoreAllFlags: {
           type: 'boolean',
-          description: 'Ignore all Chrome flags',
-          default: false,
+          description: 'Ignore all Chrome flags (recommended: true for clean startup without --no-sandbox)',
+          default: true,
         },
         proxy: {
           type: 'string',

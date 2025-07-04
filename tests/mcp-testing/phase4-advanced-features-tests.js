@@ -288,16 +288,6 @@ class Phase4AdvancedFeaturesTests {
         error: selectorContentResult?.error
       });
 
-      // Test screenshot with selector
-      const selectorScreenshotResult = await this.client.callTool('screenshot', {
-        selector: 'h1'
-      });
-
-      this.logger.logTest('Phase 4', 'Screenshot of Specific Element', 
-                         selectorScreenshotResult?.success ? 'passed' : 'failed', {
-        error: selectorScreenshotResult?.error
-      });
-
     } catch (error) {
       this.logger.logTest('Phase 4', 'Element Interactions Test', 'failed', {
         error: error.message

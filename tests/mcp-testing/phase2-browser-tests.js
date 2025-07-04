@@ -93,24 +93,6 @@ class Phase2BrowserTests {
         return;
       }
       
-      // Take screenshot
-      const screenshotStartTime = Date.now();
-      const screenshotResult = await this.client.callTool('screenshot', {
-        fullPage: false
-      });
-      const screenshotDuration = Date.now() - screenshotStartTime;
-      
-      if (screenshotResult?.content && screenshotResult.content.length > 0) {
-        this.logger.logTest('Phase 2', 'Screenshot Capture', 'passed', {
-          duration: `${screenshotDuration}ms`,
-          imageSize: screenshotResult.content[0]?.data?.length || 'unknown'
-        });
-      } else {
-        this.logger.logTest('Phase 2', 'Screenshot Capture', 'failed', {
-          error: screenshotResult?.error || 'Screenshot failed'
-        });
-      }
-      
       // Get page content
       const contentResult = await this.client.callTool('get_content', {
         type: 'text'

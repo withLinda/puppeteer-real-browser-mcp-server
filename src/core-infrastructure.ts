@@ -1,5 +1,5 @@
-import { validateWorkflow, recordExecution, workflowValidator } from './workflow-validation';
-import { categorizeError, BrowserErrorType, updateCircuitBreakerOnFailure, updateCircuitBreakerOnSuccess, isCircuitBreakerOpen, closeBrowser } from './browser-manager';
+import { validateWorkflow, recordExecution, workflowValidator } from './workflow-validation.js';
+import { categorizeError, BrowserErrorType, updateCircuitBreakerOnFailure, updateCircuitBreakerOnSuccess, isCircuitBreakerOpen, closeBrowser } from './browser-manager.js';
 import { setTimeout as sleep } from 'node:timers/promises';
 
 // Browser-specific retry logic with circuit breaker and error recovery

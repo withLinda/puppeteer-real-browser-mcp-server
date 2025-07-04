@@ -1,9 +1,9 @@
-import { getBrowserInstance, getPageInstance, getContentPriorityConfig } from '../browser-manager';
-import { withErrorHandling, withTimeout } from '../system-utils';
-import { validateWorkflow, recordExecution, workflowValidator } from '../workflow-validation';
-import { contentStrategy } from '../content-strategy';
-import { tokenManager } from '../token-management';
-import { GetContentArgs, ScreenshotArgs, FindSelectorArgs } from '../tool-definitions';
+import { getBrowserInstance, getPageInstance, getContentPriorityConfig } from '../browser-manager.js';
+import { withErrorHandling, withTimeout } from '../system-utils.js';
+import { validateWorkflow, recordExecution, workflowValidator } from '../workflow-validation.js';
+import { contentStrategy } from '../content-strategy.js';
+import { tokenManager } from '../token-management.js';
+import { GetContentArgs, FindSelectorArgs } from '../tool-definitions.js';
 
 // Get content handler
 export async function handleGetContent(args: GetContentArgs) {
@@ -76,111 +76,6 @@ export async function handleGetContent(args: GetContentArgs) {
         ],
       };
     }, 'Failed to get page content');
-  });
-}
-
-// Screenshot handler
-export async function handleScreenshot(args: ScreenshotArgs): Promise<any> {
-  return await withWorkflowValidation('screenshot', args, async () => {
-    return await withErrorHandling(async () => {
-      const pageInstance = getPageInstance();
-      if (!pageInstance) {
-        throw new Error('Browser not initialized. Call browser_init first.');
-      }
-
-      const config = getContentPriorityConfig();
-      const { fullPage = false, selector, safeMode = false } = args;
-
-      // Check content priority configuration
-      if (config.prioritizeContent && config.autoSuggestGetContent) {
-        const suggestion = '\n\n💡 Content Priority Mode: Consider using get_content instead of screenshot for better content analysis and reliability.\n' +
-          '  • get_content provides structured text/HTML output\n' +
-          '  • More reliable than image processing\n' +
-          '  • Better for element discovery and automation\n' +
-          '  • Avoids screenshot-related technical issues';
-        
-        if (!config.fallbackToScreenshots) {
-          throw new Error(
-            'Screenshots are disabled in content priority mode. Use get_content for page analysis.' + suggestion
-          );
-        }
-        
-        console.warn('Screenshot in content priority mode. Consider using get_content instead.');
-      }
-
-      try {
-        let screenshotOptions: any = {
-          fullPage: fullPage,
-          type: 'png',
-          encoding: 'base64'
-        };
-
-        if (selector) {
-          // Element-specific screenshot
-          const element = await pageInstance.$(selector);
-          if (!element) {
-            throw new Error(`Element not found for screenshot: ${selector}`);
-          }
-          screenshotOptions.clip = await element.boundingBox();
-        }
-
-        let screenshot: string;
-
-        if (safeMode) {
-          // Use CDP directly for safer screenshot
-          console.warn('Using safe mode screenshot method');
-          const client = await pageInstance.target().createCDPSession();
-          
-          try {
-            const result = await client.send('Page.captureScreenshot', {
-              format: 'png',
-              fromSurface: true,
-              captureBeyondViewport: fullPage
-            });
-            screenshot = result.data;
-          } finally {
-            await client.detach();
-          }
-        } else {
-          // Standard screenshot method
-          screenshot = await pageInstance.screenshot(screenshotOptions);
-        }
-
-        const suggestion = config.autoSuggestGetContent ? 
-          '\n\n💡 For content analysis, consider using get_content which provides structured text/HTML output and is more reliable than image processing.' : '';
-
-        return {
-          content: [
-            {
-              type: 'image',
-              data: screenshot,
-              mimeType: 'image/png',
-            },
-            {
-              type: 'text', 
-              text: `Screenshot captured successfully${selector ? ` for element: ${selector}` : ''}${suggestion}`,
-            },
-          ],
-        };
-      } catch (error) {
-        const errorMessage = error instanceof Error ? error.message : String(error);
-        
-        if (errorMessage.includes('stack overflow') || errorMessage.includes('RangeError')) {
-          if (!safeMode) {
-            console.warn('Screenshot failed with stack overflow, retrying with safe mode...');
-            return await handleScreenshot({ ...args, safeMode: true });
-          }
-        }
-
-        const fallbackSuggestion = config.autoSuggestGetContent ?
-          '\n\n💡 Screenshot failed. Use get_content for reliable page analysis:\n' +
-          '  • get_content provides text/HTML without image processing issues\n' +
-          '  • More reliable for content extraction and element discovery\n' +
-          '  • Avoids technical screenshot limitations' : '';
-
-        throw new Error(`Screenshot failed: ${errorMessage}${fallbackSuggestion}`);
-      }
-    }, 'Failed to take screenshot');
   });
 }
 

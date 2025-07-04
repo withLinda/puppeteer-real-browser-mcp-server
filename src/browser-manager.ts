@@ -10,6 +10,7 @@ export interface ContentPriorityConfig {
   autoSuggestGetContent: boolean;
 }
 
+
 // Circuit breaker and recursion tracking
 export interface CircuitBreakerState {
   failureCount: number;
@@ -41,6 +42,7 @@ let contentPriorityConfig: ContentPriorityConfig = {
   autoSuggestGetContent: !disableContentPriority
 };
 
+
 let browserCircuitBreaker: CircuitBreakerState = {
   failureCount: 0,
   lastFailureTime: 0,
@@ -54,6 +56,27 @@ const CIRCUIT_BREAKER_TIMEOUT = 30000; // 30 seconds
 
 let browserInitDepth = 0;
 const MAX_BROWSER_INIT_DEPTH = 2;
+
+// Reset function for testing and error recovery
+export function resetBrowserInitDepth() {
+  browserInitDepth = 0;
+}
+
+// Test-safe browser initialization that bypasses depth limit
+export async function initializeBrowserForTesting(options?: any) {
+  // Reset depth counter for testing
+  browserInitDepth = 0;
+  
+  // Force close any existing browser first
+  try {
+    await closeBrowser();
+  } catch (error) {
+    // Ignore close errors
+  }
+  
+  // Now initialize normally
+  return await initializeBrowser(options);
+}
 
 let sessionValidationInProgress = false;
 
@@ -381,6 +404,7 @@ export async function validateSession(): Promise<boolean> {
   }
 }
 
+
 // Helper function to quickly find authentication elements
 export async function findAuthElements(pageInstance: any): Promise<string[]> {
   return await pageInstance.evaluate(() => {
@@ -452,73 +476,47 @@ export async function initializeBrowser(options?: any) {
     const customConfig = options?.customConfig ?? {};
     const platform = process.platform;
 
+
     const getOptimalChromeFlags = (isWindows: boolean, isRetry: boolean = false): string[] => {
+      // 2025 best practices: Minimal, secure, performance-focused flags
       const baseFlags = [
         '--no-first-run',
-        '--no-default-browser-check',
+        '--no-default-browser-check', 
         '--disable-default-apps',
-        '--disable-blink-features=AutomationControlled',
-        '--disable-dev-shm-usage',
-        '--disable-setuid-sandbox',
-        '--disable-web-security',
+        '--disable-blink-features=AutomationControlled', // Essential for stealth
+        '--start-maximized', // UI convenience, minimal performance impact
       ];
 
+      // Add platform-specific flags only when absolutely necessary
+      const platformFlags: string[] = [];
+      
       if (isWindows) {
-        const windowsFlags = [
-          '--no-sandbox',
-          '--disable-gpu',
-          '--disable-gpu-sandbox',
-          '--disable-software-rasterizer',
-          '--disable-background-timer-throttling',
-          '--disable-renderer-backgrounding',
-          '--disable-backgrounding-occluded-windows',
-          '--disable-features=TranslateUI,VizDisplayCompositor',
-          '--force-color-profile=srgb',
-          '--metrics-recording-only',
-          '--no-default-browser-check',
-          '--no-first-run',
-          '--mute-audio',
-          '--hide-scrollbars',
-          '--disable-component-update',
-          '--disable-background-networking',
-          '--disable-sync',
-          '--disable-translate',
-          '--disable-ipc-flooding-protection',
-          '--max-old-space-size=4096',
-          '--stack-size=16000',
-        ];
-
-        if (isRetry) {
-          windowsFlags.push(
-            '--single-process',
-            '--no-zygote',
-            '--disable-extensions',
-            '--disable-plugins',
-            '--remote-debugging-port=0',
-          );
-        } else {
-          windowsFlags.push(
-            '--start-maximized',
-            '--disable-extensions-file-access-check',
-          );
-        }
-
-        return [...baseFlags, ...windowsFlags];
-      } else {
-        return [
-          ...baseFlags,
-          '--no-sandbox',
-          '--disable-features=VizDisplayCompositor',
-          '--start-maximized',
-        ];
+        // Only add Windows-specific flags if there are compatibility issues
+        // Note: --no-sandbox removed for security (not needed for desktop automation)
+        // Note: --disable-gpu removed unless headless mode has issues
       }
+
+      // Emergency fallback flags for retry attempts only
+      if (isRetry) {
+        platformFlags.push(
+          '--disable-extensions',
+          '--disable-plugins',
+          '--remote-debugging-port=0',
+        );
+      }
+
+      return [...baseFlags, ...platformFlags];
     };
 
     const isRetryAttempt = options?._isRetryAttempt ?? false;
+    const useIgnoreAllFlags = options?.ignoreAllFlags ?? true;
 
     const chromeConfig = {
-      ignoreDefaultFlags: false,
-      chromeFlags: getOptimalChromeFlags(platform === 'win32', isRetryAttempt),
+      ignoreDefaultFlags: true,
+      chromeFlags: useIgnoreAllFlags ? [
+        '--start-maximized',
+        '--disable-blink-features=AutomationControlled'
+      ] : getOptimalChromeFlags(platform === 'win32', isRetryAttempt),
       ...customConfig
     };
 
@@ -531,6 +529,11 @@ export async function initializeBrowser(options?: any) {
       customConfig: chromeConfig,
       turnstile: true,
       disableXvfb: options?.disableXvfb ?? true,
+      ignoreAllFlags: options?.ignoreAllFlags ?? true,
+      args: useIgnoreAllFlags ? [
+        '--start-maximized',
+        '--disable-blink-features=AutomationControlled'
+      ] : [],
       connectOption: {
         defaultViewport: null,
         timeout: platform === 'win32' ? 60000 : 30000,
@@ -576,27 +579,42 @@ export async function initializeBrowser(options?: any) {
       return { strategyName, strategy };
     };
 
-    const connectionStrategies = [
-      {
-        strategyName: 'Maximized Window Configuration',
-        strategy: {
-          executablePath: detectedChromePath,
-          headless: options?.headless ?? false,
-          turnstile: true,
-          args: [
+    // Primary strategy: User-defined configuration without --no-sandbox
+    const primaryStrategy = {
+      strategyName: 'User-Defined Configuration',
+      strategy: {
+        executablePath: detectedChromePath,
+        headless: options?.headless ?? false,
+        turnstile: true,
+        args: [
+          "--start-maximized",
+          "--disable-blink-features=AutomationControlled",
+        ],
+        disableXvfb: true,
+        ignoreAllFlags: true,
+        customConfig: {
+          ignoreDefaultFlags: true,
+          chromeFlags: [
             "--start-maximized",
             "--disable-blink-features=AutomationControlled",
-          ],
-          disableXvfb: true,
-          connectOption: {
-            defaultViewport: null,
-          },
-        }
-      },
+          ]
+        },
+        connectOption: {
+          defaultViewport: null,
+        },
+      }
+    };
+
+    const connectionStrategies = [
+      primaryStrategy,
       
+      // Fallback strategies only if primary fails
       createConnectionStrategy('Minimal Configuration', {
         customConfig: {
+          ignoreDefaultFlags: true,
           chromeFlags: [
+            '--start-maximized',
+            '--disable-blink-features=AutomationControlled',
             '--no-first-run',
             '--no-default-browser-check',
             '--disable-default-apps'
@@ -604,35 +622,25 @@ export async function initializeBrowser(options?: any) {
         }
       }),
       
-      createConnectionStrategy('Optimal Configuration', {}),
-      createConnectionStrategy('Headless Mode', { headless: true }),
-      
-      ...(platform === 'win32' ? [
-        createConnectionStrategy('Single Process Mode', {
-          customConfig: {
-            chromeFlags: [...chromeConfig.chromeFlags, '--single-process', '--no-zygote']
-          }
-        })
-      ] : []),
-      
-      createConnectionStrategy('Network Fallback', {
+      createConnectionStrategy('Optimal Configuration', {
         customConfig: {
+          ignoreDefaultFlags: true,
           chromeFlags: [
-            ...chromeConfig.chromeFlags,
-            '--disable-web-security',
-            '--disable-features=VizDisplayCompositor',
-            ...(hostTest.recommendedHost === '127.0.0.1' ? ['--remote-debugging-address=127.0.0.1'] : [])
+            '--start-maximized',
+            '--disable-blink-features=AutomationControlled'
           ]
         }
       }),
       
-      createConnectionStrategy('Minimal Configuration', {
+      createConnectionStrategy('Network Fallback', {
         customConfig: {
+          ignoreDefaultFlags: true,
           chromeFlags: [
-            '--no-sandbox', 
-            '--disable-dev-shm-usage', 
-            '--disable-setuid-sandbox',
-            '--remote-debugging-port=0'
+            '--start-maximized',
+            '--disable-blink-features=AutomationControlled',
+            '--disable-web-security',
+            '--disable-features=VizDisplayCompositor',
+            ...(hostTest.recommendedHost === '127.0.0.1' ? ['--remote-debugging-address=127.0.0.1'] : [])
           ]
         }
       })
@@ -650,7 +658,8 @@ export async function initializeBrowser(options?: any) {
           try {
             console.error(`   Strategy config: ${JSON.stringify({
               headless: strategy.headless,
-              chromeFlags: strategy.customConfig?.chromeFlags?.slice(0, 5) || 'none',
+              ignoreAllFlags: strategy.ignoreAllFlags,
+              chromeFlags: strategy.customConfig?.chromeFlags || 'none',
               chromePath: strategy.customConfig?.chromePath || 'default'
             })}`);
             
@@ -689,6 +698,7 @@ export async function initializeBrowser(options?: any) {
 
         browserInstance = browser;
         pageInstance = page;
+
 
         console.error(`✅ Browser initialized successfully using ${strategyName}`);
         updateCircuitBreakerOnSuccess();
@@ -847,3 +857,4 @@ export function getContentPriorityConfig() {
 export function updateContentPriorityConfig(config: Partial<ContentPriorityConfig>) {
   contentPriorityConfig = { ...contentPriorityConfig, ...config };
 }
+

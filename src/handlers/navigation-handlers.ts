@@ -1,7 +1,7 @@
-import { getBrowserInstance, getPageInstance } from '../browser-manager';
-import { withErrorHandling, withTimeout } from '../system-utils';
-import { validateWorkflow, recordExecution, workflowValidator } from '../workflow-validation';
-import { NavigateArgs, WaitArgs } from '../tool-definitions';
+import { getBrowserInstance, getPageInstance } from '../browser-manager.js';
+import { withErrorHandling, withTimeout } from '../system-utils.js';
+import { validateWorkflow, recordExecution, workflowValidator } from '../workflow-validation.js';
+import { NavigateArgs, WaitArgs } from '../tool-definitions.js';
 
 // Navigation handler
 export async function handleNavigate(args: NavigateArgs) {
@@ -12,12 +12,13 @@ export async function handleNavigate(args: NavigateArgs) {
         throw new Error('Browser not initialized. Call browser_init first.');
       }
 
-      const { url, waitUntil = 'networkidle2' } = args;
+      const { url, waitUntil = 'domcontentloaded' } = args;
       
       console.error(`🔄 Navigating to: ${url}`);
       
       // Navigate with retry logic
       let lastError: Error | null = null;
+      let success = false;
       const maxRetries = 3;
       
       for (let attempt = 1; attempt <= maxRetries; attempt++) {
@@ -30,6 +31,7 @@ export async function handleNavigate(args: NavigateArgs) {
           }, 60000, 'page-navigation');
           
           console.error(`✅ Navigation successful to: ${url}`);
+          success = true;
           break;
         } catch (error) {
           lastError = error instanceof Error ? error : new Error(String(error));
@@ -43,7 +45,7 @@ export async function handleNavigate(args: NavigateArgs) {
         }
       }
       
-      if (lastError) {
+      if (!success && lastError) {
         throw lastError;
       }
 
@@ -75,6 +77,12 @@ export async function handleWait(args: WaitArgs) {
       }
 
       const { type, value, timeout = 30000 } = args;
+      
+      // Validate timeout parameter
+      if (typeof timeout !== 'number' || isNaN(timeout) || timeout < 0) {
+        throw new Error('Timeout parameter must be a positive number');
+      }
+      
       const startTime = Date.now();
       
       console.error(`⏳ Waiting for ${type}: ${value} (timeout: ${timeout}ms)`);
@@ -96,8 +104,8 @@ export async function handleWait(args: WaitArgs) {
             break;
             
           case 'timeout':
-            const waitTime = parseInt(value);
-            if (isNaN(waitTime)) {
+            const waitTime = parseInt(value, 10);
+            if (isNaN(waitTime) || waitTime < 0) {
               throw new Error('Timeout value must be a number');
             }
             await new Promise(resolve => setTimeout(resolve, Math.min(waitTime, timeout)));

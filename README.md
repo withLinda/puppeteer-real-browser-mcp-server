@@ -1,3 +1,16 @@
+> **🚧 MAINTENANCE WARNING 🚧**
+> 
+> **This MCP server is currently under maintenance due to browser initialization issues.**
+> 
+> **Known Issues:**
+> - Browser may launch twice (non-real browser followed by real browser)
+> - Some functionality may not work as intended
+> - Connection issues may occur
+> 
+> **Recommendation:** Wait for the next update or check [GitHub Issues](https://github.com/withLinda/puppeteer-real-browser-mcp-server/issues) for status updates.
+> 
+> **Status:** Under active investigation and repair
+
 # Puppeteer Real Browser MCP Server
 
 A Model Context Protocol (MCP) server that provides AI assistants with
@@ -344,7 +357,7 @@ Cursor IDE uses the same npx approach - no installation needed! Here are the set
       "command": "npx",
       "args": ["puppeteer-real-browser-mcp-server@latest"],
       "env": {
-        "PUPPETEER_LAUNCH_OPTIONS": "{\"headless\": false, \"executablePath\": \"C:/Program Files/Google/Chrome/Application/chrome.exe\", \"args\": [\"--disable-gpu\", \"--no-sandbox\"]}",
+        "PUPPETEER_LAUNCH_OPTIONS": "{\"headless\": false, \"executablePath\": \"C:/Program Files/Google/Chrome/Application/chrome.exe\", \"args\": [\"--disable-gpu\"]}",
         "ALLOW_DANGEROUS": "true"
       }
     }
@@ -814,7 +827,7 @@ Version 1.3.0 includes comprehensive fixes for the `connect ECONNREFUSED 127.0.0
      **Step 3: Windows Launch Arguments**
      For Windows compatibility, use these launch arguments:
      ```
-     Ask Claude: "Initialize browser with args --disable-gpu --no-sandbox --disable-setuid-sandbox"
+     Ask Claude: "Initialize browser with args --disable-gpu --disable-setuid-sandbox"
      ```
      
      **Step 4: Windows-Specific Solutions**

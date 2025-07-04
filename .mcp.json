@@ -1,9 +1,12 @@
 {
   "mcpServers": {
     "puppeteer-real-browser": {
-      "command": "node",
-      "args": ["dist/index.js"],
-      "env": {}
+      "command": "/Users/linda/.nvm/versions/node/v22.6.0/bin/node",
+      "args": ["/Users/linda/Documents/DEV/puppeteer-real-browser-mcp-server/dist/index.js"],
+      "cwd": "/Users/linda/Documents/DEV/puppeteer-real-browser-mcp-server",
+      "env": {
+        "PATH": "/Users/linda/.nvm/versions/node/v22.6.0/bin:/usr/local/bin:/usr/bin:/bin"
+      }
     }
   }
 }

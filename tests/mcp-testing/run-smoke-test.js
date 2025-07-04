@@ -59,14 +59,14 @@ async function runSmokeTest() {
     }
     logger.log('✅ Navigation successful', 'SUCCESS');
     
-    // Screenshot
-    logger.log('Taking screenshot...', 'INFO');
-    const screenshotResult = await client.callTool('screenshot', {});
+    // Get content instead of screenshot
+    logger.log('Getting page content...', 'INFO');
+    const contentResult = await client.callTool('get_content', { type: 'text' });
     
-    if (!screenshotResult?.content || screenshotResult.content.length === 0) {
-      throw new Error('Failed to take screenshot');
+    if (!contentResult?.content || contentResult.content.length === 0) {
+      throw new Error('Failed to get page content');
     }
-    logger.log('✅ Screenshot captured', 'SUCCESS');
+    logger.log('✅ Content retrieved', 'SUCCESS');
     
     // Close browser
     logger.log('Closing browser...', 'INFO');

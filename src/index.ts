@@ -11,16 +11,16 @@ import {
 } from '@modelContextProtocol/sdk/types.js';
 
 // Import extracted modules
-import { TOOLS, SERVER_INFO, CAPABILITIES, TOOL_NAMES, NavigateArgs, ClickArgs, TypeArgs, WaitArgs, SolveCaptchaArgs, FindSelectorArgs } from './tool-definitions';
-import { withErrorHandling } from './system-utils';
-import { closeBrowser, forceKillAllChromeProcesses } from './browser-manager';
-import { setupProcessCleanup, MCP_SERVER_CONFIG } from './core-infrastructure';
+import { TOOLS, SERVER_INFO, CAPABILITIES, TOOL_NAMES, NavigateArgs, ClickArgs, TypeArgs, WaitArgs, SolveCaptchaArgs, FindSelectorArgs } from './tool-definitions.js';
+import { withErrorHandling } from './system-utils.js';
+import { closeBrowser, forceKillAllChromeProcesses } from './browser-manager.js';
+import { setupProcessCleanup, MCP_SERVER_CONFIG } from './core-infrastructure.js';
 
 // Import handlers
-import { handleBrowserInit, handleBrowserClose } from './handlers/browser-handlers';
-import { handleNavigate, handleWait } from './handlers/navigation-handlers';
-import { handleClick, handleType, handleSolveCaptcha, handleRandomScroll } from './handlers/interaction-handlers';
-import { handleGetContent, handleScreenshot, handleFindSelector } from './handlers/content-handlers';
+import { handleBrowserInit, handleBrowserClose } from './handlers/browser-handlers.js';
+import { handleNavigate, handleWait } from './handlers/navigation-handlers.js';
+import { handleClick, handleType, handleSolveCaptcha, handleRandomScroll } from './handlers/interaction-handlers.js';
+import { handleGetContent, handleFindSelector } from './handlers/content-handlers.js';
 
 // Initialize MCP server
 const server = new Server(SERVER_INFO, { capabilities: CAPABILITIES });
@@ -54,9 +54,6 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
 
       case TOOL_NAMES.GET_CONTENT:
         return await handleGetContent(args || {});
-
-      case TOOL_NAMES.SCREENSHOT:
-        return await handleScreenshot(args || {});
 
       case TOOL_NAMES.CLICK:
         return await handleClick(args as unknown as ClickArgs);
@@ -130,7 +127,7 @@ process.on('unhandledRejection', (reason) => {
 });
 
 // Start the server
-if (require.main === module) {
+if (import.meta.url === `file://${process.argv[1]}`) {
   main().catch((error) => {
     console.error('❌ Failed to start server:', error);
     process.exit(1);

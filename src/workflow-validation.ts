@@ -2,16 +2,24 @@
  * Workflow Validation System for MCP Server
  * 
  * Prevents blind selector guessing by enforcing proper tool execution sequence:
- * BROWSER_INIT → PAGE_LOADED → CONTENT_ANALYZED → SELECTOR_AVAILABLE
+ * INITIAL → BROWSER_READY → PAGE_LOADED → CONTENT_ANALYZED → SELECTOR_AVAILABLE
+ * 
+ * State transitions:
+ * - browser_init: INITIAL → BROWSER_READY
+ * - navigate: BROWSER_READY → PAGE_LOADED  
+ * - get_content: PAGE_LOADED → CONTENT_ANALYZED
+ * - find_selector: CONTENT_ANALYZED → SELECTOR_AVAILABLE
+ * - browser_close: any state → INITIAL
  * 
  * Based on 2025 MCP validation best practices and security guidelines.
  */
 
 export enum WorkflowState {
-  BROWSER_INIT = 'BROWSER_INIT',
-  PAGE_LOADED = 'PAGE_LOADED', 
-  CONTENT_ANALYZED = 'CONTENT_ANALYZED',
-  SELECTOR_AVAILABLE = 'SELECTOR_AVAILABLE'
+  INITIAL = 'INITIAL',           // Before browser initialization
+  BROWSER_READY = 'BROWSER_READY', // After successful browser_init, ready for navigation
+  PAGE_LOADED = 'PAGE_LOADED',   // After successful navigation
+  CONTENT_ANALYZED = 'CONTENT_ANALYZED', // After successful get_content
+  SELECTOR_AVAILABLE = 'SELECTOR_AVAILABLE' // After successful find_selector
 }
 
 export interface WorkflowContext {
@@ -54,7 +62,7 @@ export class WorkflowValidator {
 
   constructor() {
     this.context = {
-      currentState: WorkflowState.BROWSER_INIT,
+      currentState: WorkflowState.INITIAL,
       contentAnalyzed: false,
       contentAnalysisAttempted: false,
       toolCallHistory: [],
@@ -74,7 +82,7 @@ export class WorkflowValidator {
    */
   reset(): void {
     this.context = {
-      currentState: WorkflowState.BROWSER_INIT,
+      currentState: WorkflowState.INITIAL,
       contentAnalyzed: false,
       contentAnalysisAttempted: false,
       toolCallHistory: [],
@@ -90,11 +98,10 @@ export class WorkflowValidator {
 
     // Define tool prerequisites - STRICT: find_selector requires successful content analysis
     const toolPrerequisites: Record<string, WorkflowState[]> = {
-      'browser_init': [WorkflowState.BROWSER_INIT],
-      'browser_close': [WorkflowState.BROWSER_INIT, WorkflowState.PAGE_LOADED, WorkflowState.CONTENT_ANALYZED, WorkflowState.SELECTOR_AVAILABLE],
-      'navigate': [WorkflowState.BROWSER_INIT, WorkflowState.PAGE_LOADED, WorkflowState.CONTENT_ANALYZED, WorkflowState.SELECTOR_AVAILABLE],
+      'browser_init': [WorkflowState.INITIAL, WorkflowState.BROWSER_READY, WorkflowState.PAGE_LOADED, WorkflowState.CONTENT_ANALYZED, WorkflowState.SELECTOR_AVAILABLE],
+      'browser_close': [WorkflowState.BROWSER_READY, WorkflowState.PAGE_LOADED, WorkflowState.CONTENT_ANALYZED, WorkflowState.SELECTOR_AVAILABLE],
+      'navigate': [WorkflowState.BROWSER_READY, WorkflowState.PAGE_LOADED, WorkflowState.CONTENT_ANALYZED, WorkflowState.SELECTOR_AVAILABLE],
       'get_content': [WorkflowState.PAGE_LOADED, WorkflowState.CONTENT_ANALYZED, WorkflowState.SELECTOR_AVAILABLE],
-      'screenshot': [WorkflowState.PAGE_LOADED, WorkflowState.CONTENT_ANALYZED, WorkflowState.SELECTOR_AVAILABLE],
       'find_selector': [WorkflowState.CONTENT_ANALYZED, WorkflowState.SELECTOR_AVAILABLE], // STRICT: Only after successful analysis
       'click': [WorkflowState.CONTENT_ANALYZED, WorkflowState.SELECTOR_AVAILABLE],
       'type': [WorkflowState.CONTENT_ANALYZED, WorkflowState.SELECTOR_AVAILABLE],
@@ -119,9 +126,12 @@ export class WorkflowValidator {
 
       switch (toolName) {
         case 'find_selector':
-          if (this.context.currentState === WorkflowState.BROWSER_INIT) {
+          if (this.context.currentState === WorkflowState.INITIAL) {
             errorMessage = `Cannot search for selectors before browser initialization and page navigation.`;
             suggestedAction = `First: 1) Use 'browser_init' to start browser, 2) Use 'navigate' to load a page, 3) Use 'get_content' to analyze page content, then 'find_selector' will be available.`;
+          } else if (this.context.currentState === WorkflowState.BROWSER_READY) {
+            errorMessage = `Cannot search for selectors before page navigation and content analysis.`;
+            suggestedAction = `First: 1) Use 'navigate' to load a page, 2) Use 'get_content' to analyze page content, then 'find_selector' will be available.`;
           } else if (this.context.currentState === WorkflowState.PAGE_LOADED) {
             errorMessage = `Cannot search for selectors before analyzing page content. This prevents blind selector guessing.`;
             suggestedAction = `Use 'get_content' to analyze the page content first. If the page is too large, try 'get_content' with contentMode='summary' or contentMode='main' for reduced token usage.`;
@@ -130,21 +140,25 @@ export class WorkflowValidator {
 
         case 'click':
         case 'type':
-          if (this.context.currentState === WorkflowState.BROWSER_INIT) {
+          if (this.context.currentState === WorkflowState.INITIAL) {
             suggestedAction = `Initialize browser and navigate to a page first: 1) browser_init, 2) navigate, 3) get_content to analyze elements.`;
+          } else if (this.context.currentState === WorkflowState.BROWSER_READY) {
+            suggestedAction = `Navigate to a page and analyze content first: 1) navigate, 2) get_content to analyze elements.`;
           } else if (this.context.currentState === WorkflowState.PAGE_LOADED) {
             suggestedAction = `Use 'get_content' to analyze page elements before interacting with them.`;
           }
           break;
 
         case 'get_content':
-          if (this.context.currentState === WorkflowState.BROWSER_INIT) {
-            suggestedAction = `Navigate to a page first: 1) Use 'browser_init' to start browser, 2) Use 'navigate' to load a page.`;
+          if (this.context.currentState === WorkflowState.INITIAL) {
+            suggestedAction = `Initialize browser and navigate to a page first: 1) Use 'browser_init' to start browser, 2) Use 'navigate' to load a page.`;
+          } else if (this.context.currentState === WorkflowState.BROWSER_READY) {
+            suggestedAction = `Navigate to a page first using 'navigate' tool.`;
           }
           break;
 
         case 'navigate':
-          if (this.context.currentState === WorkflowState.BROWSER_INIT) {
+          if (this.context.currentState === WorkflowState.INITIAL) {
             suggestedAction = `Initialize browser first using 'browser_init' tool.`;
           }
           break;
@@ -199,7 +213,7 @@ export class WorkflowValidator {
 
     switch (toolName) {
       case 'browser_init':
-        newState = WorkflowState.BROWSER_INIT;
+        newState = WorkflowState.BROWSER_READY; // Transition to BROWSER_READY after successful init
         // Reset content analysis when browser is reinitialized
         this.context.contentAnalyzed = false;
         this.context.contentAnalysisAttempted = false;
@@ -236,7 +250,7 @@ export class WorkflowValidator {
 
       case 'browser_close':
         // Reset to initial state when browser is closed
-        newState = WorkflowState.BROWSER_INIT;
+        newState = WorkflowState.INITIAL;
         this.context.contentAnalyzed = false;
         this.context.contentAnalysisAttempted = false;
         this.context.pageUrl = undefined;

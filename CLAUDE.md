@@ -1,4 +1,5 @@
-# Project Instructions for Claude Code
+ please use puppeteer-real-browser tool to open https://www.upwork.com/ find 
+  the login link and let me type the username and password manually# Project Instructions for Claude Code
 
 ## MANDATORY: Research-First Development
 

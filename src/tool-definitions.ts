@@ -26,6 +26,7 @@ export interface ContentPriorityConfig {
   autoSuggestGetContent: boolean;
 }
 
+
 // Check environment variable for testing override
 const disableContentPriority = process.env.DISABLE_CONTENT_PRIORITY === 'true' || process.env.NODE_ENV === 'test';
 
@@ -34,6 +35,7 @@ export const DEFAULT_CONTENT_PRIORITY_CONFIG: ContentPriorityConfig = {
   fallbackToScreenshots: disableContentPriority,
   autoSuggestGetContent: !disableContentPriority
 };
+
 
 // Complete tool definitions array
 export const TOOLS = [
@@ -55,8 +57,8 @@ export const TOOLS = [
         },
         ignoreAllFlags: {
           type: 'boolean',
-          description: 'Ignore all Chrome flags',
-          default: false,
+          description: 'Ignore all Chrome flags (recommended: true for clean startup without --no-sandbox)',
+          default: true,
         },
         proxy: {
           type: 'string',
@@ -124,33 +126,10 @@ export const TOOLS = [
           type: 'string',
           description: 'When to consider navigation complete',
           enum: ['load', 'domcontentloaded', 'networkidle0', 'networkidle2'],
-          default: 'networkidle2',
+          default: 'domcontentloaded',
         },
       },
       required: ['url'],
-    },
-  },
-  {
-    name: 'screenshot',
-    description: 'Take a screenshot of the current page (Note: May fail on some configurations due to stack overflow issues. Consider using get_content for content analysis instead)',
-    inputSchema: {
-      type: 'object',
-      properties: {
-        fullPage: {
-          type: 'boolean',
-          description: 'Capture the full scrollable page',
-          default: false,
-        },
-        selector: {
-          type: 'string',
-          description: 'CSS selector of element to screenshot',
-        },
-        safeMode: {
-          type: 'boolean',
-          description: 'Use safer screenshot method to avoid stack overflow issues (may reduce quality)',
-          default: false,
-        },
-      },
     },
   },
   {
@@ -298,8 +277,7 @@ export const TOOLS = [
 // Tool name constants for type safety
 export const TOOL_NAMES = {
   BROWSER_INIT: 'browser_init',
-  NAVIGATE: 'navigate', 
-  SCREENSHOT: 'screenshot',
+  NAVIGATE: 'navigate',
   GET_CONTENT: 'get_content',
   CLICK: 'click',
   TYPE: 'type',
@@ -328,12 +306,6 @@ export interface BrowserInitArgs {
 export interface NavigateArgs {
   url: string;
   waitUntil?: 'load' | 'domcontentloaded' | 'networkidle0' | 'networkidle2';
-}
-
-export interface ScreenshotArgs {
-  fullPage?: boolean;
-  selector?: string;
-  safeMode?: boolean;
 }
 
 export interface GetContentArgs {
@@ -372,7 +344,6 @@ export interface FindSelectorArgs {
 export type ToolArgs = 
   | BrowserInitArgs
   | NavigateArgs
-  | ScreenshotArgs
   | GetContentArgs
   | ClickArgs
   | TypeArgs
@@ -386,5 +357,5 @@ export const TOOL_CATEGORIES = {
   BROWSER_MANAGEMENT: [TOOL_NAMES.BROWSER_INIT, TOOL_NAMES.BROWSER_CLOSE],
   NAVIGATION: [TOOL_NAMES.NAVIGATE, TOOL_NAMES.WAIT],
   INTERACTION: [TOOL_NAMES.CLICK, TOOL_NAMES.TYPE, TOOL_NAMES.SOLVE_CAPTCHA, TOOL_NAMES.RANDOM_SCROLL],
-  CONTENT: [TOOL_NAMES.GET_CONTENT, TOOL_NAMES.SCREENSHOT, TOOL_NAMES.FIND_SELECTOR],
+  CONTENT: [TOOL_NAMES.GET_CONTENT, TOOL_NAMES.FIND_SELECTOR],
 } as const;

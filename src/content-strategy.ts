@@ -10,8 +10,8 @@
  * Integrates with workflow validation and token management systems.
  */
 
-import { tokenManager, ContentStrategy, TokenCountResult, ContentChunk } from './token-management';
-import { workflowValidator, WorkflowState } from './workflow-validation';
+import { tokenManager, ContentStrategy, TokenCountResult, ContentChunk } from './token-management.js';
+import { workflowValidator, WorkflowState } from './workflow-validation.js';
 
 export interface ContentRequest {
   type?: 'html' | 'text';
@@ -367,7 +367,7 @@ export class ContentStrategyEngine {
   ): Promise<ContentResponse> {
     // Validate workflow state
     const workflowState = workflowValidator.getContext().currentState;
-    if (workflowState === WorkflowState.BROWSER_INIT) {
+    if (workflowState === WorkflowState.INITIAL) {
       throw new Error('Cannot retrieve content before browser initialization and page navigation. Use browser_init and navigate first.');
     }
 

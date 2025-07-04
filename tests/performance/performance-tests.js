@@ -22,7 +22,6 @@ class PerformanceTests {
     this.metrics = {
       browserInit: [],
       navigation: [],
-      screenshots: [],
       concurrency: [],
       memory: []
     };
@@ -36,7 +35,6 @@ class PerformanceTests {
       
       await this.testBrowserInitPerformance();
       await this.testNavigationPerformance();
-      await this.testScreenshotPerformance();
       await this.testConcurrentOperations();
       await this.testSessionLongevity();
       
@@ -141,51 +139,6 @@ class PerformanceTests {
     await this.client.callTool('browser_close', {});
   }
 
-  async testScreenshotPerformance() {
-    this.logger.log('Testing screenshot performance...', 'INFO');
-    
-    await this.client.callTool('browser_init', { headless: true });
-    await this.client.callTool('navigate', { url: 'https://example.com' });
-    
-    const screenshotTests = [
-      { name: 'Viewport Screenshot', options: {} },
-      { name: 'Full Page Screenshot', options: { fullPage: true } }
-    ];
-    
-    const screenshotResults = [];
-    
-    for (const test of screenshotTests) {
-      const trials = 5;
-      const results = [];
-      
-      for (let i = 0; i < trials; i++) {
-        const startTime = Date.now();
-        
-        try {
-          await this.client.callTool('screenshot', test.options);
-          const duration = Date.now() - startTime;
-          results.push(duration);
-          
-        } catch (error) {
-          this.logger.log(`${test.name} trial ${i + 1} failed: ${error.message}`, 'ERROR');
-        }
-      }
-      
-      if (results.length > 0) {
-        const avg = results.reduce((a, b) => a + b, 0) / results.length;
-        screenshotResults.push({ test: test.name, avg, results });
-        
-        this.logger.logTest('Performance', test.name, 'passed', {
-          averageTime: `${avg.toFixed(0)}ms`,
-          trials: results.length
-        });
-      }
-    }
-    
-    this.metrics.screenshots = screenshotResults;
-    await this.client.callTool('browser_close', {});
-  }
-
   async testConcurrentOperations() {
     this.logger.log('Testing concurrent operation handling...', 'INFO');
     
@@ -195,7 +148,6 @@ class PerformanceTests {
     // Test rapid sequential operations
     const operations = [
       () => this.client.callTool('get_content', { type: 'text' }),
-      () => this.client.callTool('screenshot', {}),
       () => this.client.callTool('get_content', { type: 'html' }),
       () => this.client.callTool('wait', { type: 'timeout', value: '100' })
     ];
@@ -248,11 +200,11 @@ class PerformanceTests {
       try {
         const url = testUrls[urlIndex % testUrls.length];
         await this.client.callTool('navigate', { url });
-        await this.client.callTool('screenshot', {});
+        await this.client.callTool('get_content', { type: 'text' });
         
         operations.push({
           timestamp: Date.now() - startTime,
-          operation: 'navigate + screenshot',
+          operation: 'navigate + get_content',
           url: url,
           success: true
         });
@@ -261,7 +213,7 @@ class PerformanceTests {
       } catch (error) {
         operations.push({
           timestamp: Date.now() - startTime,
-          operation: 'navigate + screenshot',
+          operation: 'navigate + get_content',
           success: false,
           error: error.message
         });
@@ -308,13 +260,6 @@ class PerformanceTests {
       this.logger.log('🌐 Navigation Performance:', 'INFO');
       this.metrics.navigation.forEach(nav => {
         this.logger.log(`   ${nav.site}: ${nav.avg.toFixed(0)}ms avg`, 'INFO');
-      });
-    }
-    
-    if (this.metrics.screenshots.length > 0) {
-      this.logger.log('📸 Screenshot Performance:', 'INFO');
-      this.metrics.screenshots.forEach(shot => {
-        this.logger.log(`   ${shot.test}: ${shot.avg.toFixed(0)}ms avg`, 'INFO');
       });
     }
     
