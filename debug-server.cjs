@@ -133,7 +133,7 @@ class ServerDebugger {
     return new Promise((resolve) => {
       serverProcess.stderr.on('data', (data) => {
         const output = data.toString();
-        if (output.includes('MCP Server for puppeteer-real-browser started')) {
+        if (output.includes('Puppeteer Real Browser MCP Server started successfully')) {
           const startupTime = Date.now() - startTime;
           console.log(`✓ Server started successfully (${startupTime}ms)`);
           hasStarted = true;
