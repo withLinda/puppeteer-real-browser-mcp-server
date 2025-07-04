@@ -1,15 +1,3 @@
-> **🚧 MAINTENANCE WARNING 🚧**
-> 
-> **This MCP server is currently under maintenance due to browser initialization issues.**
-> 
-> **Known Issues:**
-> - Browser may launch twice (non-real browser followed by real browser)
-> - Some functionality may not work as intended
-> - Connection issues may occur
-> 
-> **Recommendation:** Wait for the next update or check [GitHub Issues](https://github.com/withLinda/puppeteer-real-browser-mcp-server/issues) for status updates.
-> 
-> **Status:** Under active investigation and repair
 
 # Puppeteer Real Browser MCP Server
 

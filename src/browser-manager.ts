@@ -512,8 +512,11 @@ export async function initializeBrowser(options?: any) {
     const useIgnoreAllFlags = options?.ignoreAllFlags ?? true;
 
     const chromeConfig = {
-      ignoreDefaultFlags: true,
+      ignoreDefaultFlags: false,
       chromeFlags: useIgnoreAllFlags ? [
+        '--no-first-run',
+        '--no-default-browser-check',
+        '--disable-default-apps',
         '--start-maximized',
         '--disable-blink-features=AutomationControlled'
       ] : getOptimalChromeFlags(platform === 'win32', isRetryAttempt),
@@ -531,6 +534,9 @@ export async function initializeBrowser(options?: any) {
       disableXvfb: options?.disableXvfb ?? true,
       ignoreAllFlags: options?.ignoreAllFlags ?? true,
       args: useIgnoreAllFlags ? [
+        '--no-first-run',
+        '--no-default-browser-check',
+        '--disable-default-apps',
         '--start-maximized',
         '--disable-blink-features=AutomationControlled'
       ] : [],
@@ -593,8 +599,11 @@ export async function initializeBrowser(options?: any) {
         disableXvfb: true,
         ignoreAllFlags: true,
         customConfig: {
-          ignoreDefaultFlags: true,
+          ignoreDefaultFlags: false,
           chromeFlags: [
+            "--no-first-run",
+            "--no-default-browser-check",
+            "--disable-default-apps",
             "--start-maximized",
             "--disable-blink-features=AutomationControlled",
           ]
@@ -611,21 +620,24 @@ export async function initializeBrowser(options?: any) {
       // Fallback strategies only if primary fails
       createConnectionStrategy('Minimal Configuration', {
         customConfig: {
-          ignoreDefaultFlags: true,
+          ignoreDefaultFlags: false,
           chromeFlags: [
-            '--start-maximized',
-            '--disable-blink-features=AutomationControlled',
             '--no-first-run',
             '--no-default-browser-check',
-            '--disable-default-apps'
+            '--disable-default-apps',
+            '--start-maximized',
+            '--disable-blink-features=AutomationControlled'
           ]
         }
       }),
       
       createConnectionStrategy('Optimal Configuration', {
         customConfig: {
-          ignoreDefaultFlags: true,
+          ignoreDefaultFlags: false,
           chromeFlags: [
+            '--no-first-run',
+            '--no-default-browser-check',
+            '--disable-default-apps',
             '--start-maximized',
             '--disable-blink-features=AutomationControlled'
           ]
@@ -634,8 +646,11 @@ export async function initializeBrowser(options?: any) {
       
       createConnectionStrategy('Network Fallback', {
         customConfig: {
-          ignoreDefaultFlags: true,
+          ignoreDefaultFlags: false,
           chromeFlags: [
+            '--no-first-run',
+            '--no-default-browser-check',
+            '--disable-default-apps',
             '--start-maximized',
             '--disable-blink-features=AutomationControlled',
             '--disable-web-security',
