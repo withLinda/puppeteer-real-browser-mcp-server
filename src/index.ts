@@ -222,8 +222,17 @@ console.error('🔍 [DEBUG] All error handlers registered');
 console.error('🔍 [DEBUG] Checking if module is main...');
 console.error(`🔍 [DEBUG] import.meta.url: ${import.meta.url}`);
 console.error(`🔍 [DEBUG] process.argv[1]: ${process.argv[1]}`);
+console.error(`🔍 [DEBUG] process.argv[0]: ${process.argv[0]}`);
 
-if (import.meta.url === `file://${process.argv[1]}`) {
+// Enhanced main module detection for npx compatibility
+const isMain = import.meta.url === `file://${process.argv[1]}` || 
+               process.argv[1].includes('puppeteer-real-browser-mcp-server') ||
+               process.argv[1].endsWith('.bin/puppeteer-real-browser-mcp-server') ||
+               process.argv.some(arg => arg.includes('puppeteer-real-browser-mcp-server'));
+
+console.error(`🔍 [DEBUG] Enhanced main detection result: ${isMain}`);
+
+if (isMain) {
   console.error('🔍 [DEBUG] Module is main - starting server...');
   main().catch((error) => {
     console.error(`🔍 [DEBUG] Main function failed at ${new Date().toISOString()}`);
@@ -233,4 +242,11 @@ if (import.meta.url === `file://${process.argv[1]}`) {
   });
 } else {
   console.error('🔍 [DEBUG] Module is not main - not starting server');
+  console.error('🔍 [DEBUG] FORCE STARTING - This is likely an npx execution');
+  main().catch((error) => {
+    console.error(`🔍 [DEBUG] Forced main function failed at ${new Date().toISOString()}`);
+    console.error('❌ Failed to start server:', error);
+    console.error(`🔍 [DEBUG] Error stack:`, error.stack);
+    process.exit(1);
+  });
 }
