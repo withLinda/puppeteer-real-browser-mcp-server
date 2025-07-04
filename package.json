@@ -1,6 +1,6 @@
 {
   "name": "puppeteer-real-browser-mcp-server",
-  "version": "1.5.3",
+  "version": "1.5.4",
   "description": "MCP server for puppeteer-real-browser",
   "type": "module",
   "main": "dist/index.js",
