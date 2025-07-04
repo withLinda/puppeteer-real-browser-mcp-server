@@ -47,12 +47,27 @@ console.error('🔍 [DEBUG] MCP server instance created successfully');
 console.error('🔍 [DEBUG] Registering initialize handler...');
 server.setRequestHandler(InitializeRequestSchema, async (request) => {
   console.error(`🔍 [DEBUG] Initialize request received: ${JSON.stringify(request)}`);
+  
+  // Use the client's protocol version to ensure compatibility
+  const clientProtocolVersion = request.params.protocolVersion;
+  console.error(`🔍 [DEBUG] Client protocol version: ${clientProtocolVersion}`);
+  
   const response = {
-    protocolVersion: '2025-03-26',
+    protocolVersion: clientProtocolVersion, // Match client version for compatibility
     capabilities: CAPABILITIES,
     serverInfo: SERVER_INFO,
   };
   console.error(`🔍 [DEBUG] Sending initialize response: ${JSON.stringify(response)}`);
+  
+  // Add a small delay to see if there are any immediate errors after response
+  setTimeout(() => {
+    console.error(`🔍 [DEBUG] 1 second after initialize response - server still alive`);
+  }, 1000);
+  
+  setTimeout(() => {
+    console.error(`🔍 [DEBUG] 5 seconds after initialize response - server still alive`);
+  }, 5000);
+  
   return response;
 });
 

@@ -827,7 +827,7 @@ export async function closeBrowser() {
 // Force kill all Chrome processes system-wide
 export async function forceKillAllChromeProcesses() {
   try {
-    const { spawn } = require('child_process');
+    const { spawn } = await import('child_process');
     
     if (process.platform !== 'win32') {
       spawn('pkill', ['-f', 'Google Chrome'], { stdio: 'ignore' });
