@@ -5,6 +5,28 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.5.11] - 2025-07-06
+
+### Changed
+- **Major README improvement**: Completely restructured README.md for better user experience
+  - Reduced length by 80% (from 1,192 to 231 lines) while keeping all essential information
+  - Added clear value proposition and simplified Quick Start guide
+  - Better information architecture with progressive disclosure
+  - Focused on user goals rather than technical complexity
+
+### Added
+- **New TROUBLESHOOTING.md**: Comprehensive troubleshooting guide extracted from README
+  - Detailed solutions for Windows connection issues (ECONNREFUSED)
+  - Platform-specific troubleshooting for all AI assistants
+  - Advanced configuration examples and debug procedures
+  - Centralized location for all troubleshooting content
+
+### Improved
+- Documentation structure now follows best practices for open source projects
+- Better cross-referencing between README, TESTING.md, and TROUBLESHOOTING.md
+- Enhanced user onboarding experience for new users
+- Clearer separation between basic usage and advanced configuration
+
 ## [1.5.9] - 2025-01-04
 
 ### Fixed
