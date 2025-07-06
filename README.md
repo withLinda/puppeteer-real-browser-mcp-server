@@ -342,15 +342,16 @@ Cursor IDE uses the same npx approach - no installation needed! Here are the set
       "command": "npx",
       "args": ["puppeteer-real-browser-mcp-server@latest"],
       "env": {
-        "PUPPETEER_LAUNCH_OPTIONS": "{\"headless\": false, \"executablePath\": \"C:/Program Files/Google/Chrome/Application/chrome.exe\", \"args\": [\"--disable-gpu\"]}",
-        "ALLOW_DANGEROUS": "true"
+        "CHROME_PATH": "C:/Program Files/Google/Chrome/Application/chrome.exe"
       }
     }
   }
 }
 ```
 
-**Advanced Configuration with Proxy and Custom Options:**
+> **Note**: Browser options like headless mode should be configured when initializing the browser through the `browser_init` tool, not via environment variables.
+
+**Advanced Configuration with Custom Chrome Path:**
 ```json
 {
   "mcpServers": {
@@ -358,34 +359,43 @@ Cursor IDE uses the same npx approach - no installation needed! Here are the set
       "command": "npx",
       "args": ["puppeteer-real-browser-mcp-server@latest"],
       "env": {
-        "PUPPETEER_LAUNCH_OPTIONS": "{\"headless\": false, \"args\": [\"--proxy-server=http://proxy:8080\"], \"executablePath\": \"C:/Program Files/Google/Chrome/Application/chrome.exe\"}",
-        "ALLOW_DANGEROUS": "true"
+        "CHROME_PATH": "C:/Program Files/Google/Chrome/Application/chrome.exe"
       }
     }
   }
 }
 ```
 
+> **Note**: Proxy settings and browser options should be configured when asking Claude to initialize the browser using the `browser_init` tool.
+
 #### Platform-Specific Chrome Paths for Cursor IDE
+
+If Chrome auto-detection fails, you can specify the Chrome path using the `CHROME_PATH` environment variable:
 
 **Windows:**
 ```json
-"executablePath": "C:/Program Files/Google/Chrome/Application/chrome.exe"
+"env": {
+  "CHROME_PATH": "C:/Program Files/Google/Chrome/Application/chrome.exe"
+}
 ```
-Alternative paths to try:
+Alternative Windows paths:
 - `"C:/Program Files (x86)/Google/Chrome/Application/chrome.exe"`
 - `"%LOCALAPPDATA%/Google/Chrome/Application/chrome.exe"`
 
 **macOS:**
 ```json
-"executablePath": "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"
+"env": {
+  "CHROME_PATH": "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"
+}
 ```
 
 **Linux:**
 ```json
-"executablePath": "/usr/bin/google-chrome"
+"env": {
+  "CHROME_PATH": "/usr/bin/google-chrome"
+}
 ```
-Alternative paths: `/usr/bin/chromium-browser`, `/snap/bin/chromium`
+Alternative Linux paths: `/usr/bin/chromium-browser`, `/snap/bin/chromium`
 
 
 #### Testing Cursor IDE Setup
