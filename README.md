@@ -489,6 +489,21 @@ AI: I'll set up the browser with your proxy configuration.
 [Uses browser_init with proxy: "https://proxy.example.com:8080"]
 ```
 
+#### Taking Screenshots
+```text
+User: "Take a screenshot of this page"
+AI: I'll capture a screenshot of the current page using anti-detection CDP method.
+[Uses screenshot tool with default settings]
+
+User: "Take a full page screenshot of the website"
+AI: I'll capture the entire page including content beyond the viewport.
+[Uses screenshot tool with fullPage: true]
+
+User: "Take a screenshot of the navigation menu"
+AI: I'll capture just the navigation menu element.
+[Uses screenshot tool with selector for the menu element]
+```
+
 ## Available Tools
 
 ### Core Browser Tools
@@ -527,6 +542,14 @@ AI: I'll set up the browser with your proxy configuration.
 | Tool Name | Description | Required Parameters | Optional Parameters |
 |-----------|-------------|---------------------|-------------------|
 | `solve_captcha` | Attempt to solve captchas | `type` | None |
+
+### Content Capture Tools
+
+| Tool Name | Description | Required Parameters | Optional Parameters |
+|-----------|-------------|---------------------|-------------------|
+| `screenshot` | **EXPLICIT REQUEST ONLY** - Capture screenshots using anti-detection CDP method | None | `selector`, `fullPage`, `quality`, `format`, `timeout`, `maxRetries` |
+
+**⚠️ Important**: The `screenshot` tool is only triggered when users explicitly request "screenshot" - it's NOT used for content analysis (use `get_content` instead).
 
 ## Advanced Features
 
@@ -570,6 +593,22 @@ The server includes basic support for solving common captcha types:
 
 Note that captcha solving capabilities depend on the underlying
 puppeteer-real-browser implementation.
+
+### Anti-Detection Screenshot Capture
+
+The screenshot tool uses an exclusively CDP (Chrome DevTools Protocol) approach for maximum stealth compatibility:
+
+- **CDP-Only Implementation**: Never uses standard Puppeteer screenshot methods that can trigger detection
+- **Browser Session Reuse**: Takes multiple screenshots without restarting the browser for efficiency  
+- **Fresh CDP Sessions**: Creates new CDP sessions per operation while preserving browser state
+- **Circuit Breaker Protection**: Prevents cascade failures during screenshot operations
+- **Compatible with Rebrowser Patches**: Works seamlessly with puppeteer-real-browser's anti-detection features
+
+**Key Benefits:**
+- Zero conflicts with stealth plugins
+- Consistent quality across all screenshot types (viewport, fullpage, element)
+- Proven compatibility with protected sites like Cloudflare
+- Optimal performance through browser instance reuse
 
 ## Configuration
 
