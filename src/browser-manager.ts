@@ -3,11 +3,8 @@ import * as fs from 'fs';
 import * as path from 'path';
 import * as net from 'net';
 
-// Content prioritization configuration
-export interface ContentPriorityConfig {
-  prioritizeContent: boolean;
-  autoSuggestGetContent: boolean;
-}
+// Content prioritization and screenshot configuration
+import { ContentPriorityConfig, DEFAULT_CONTENT_PRIORITY_CONFIG, ScreenshotSaveConfig, DEFAULT_SCREENSHOT_SAVE_CONFIG } from './tool-definitions.js';
 
 
 // Circuit breaker and recursion tracking
@@ -36,8 +33,11 @@ let pageInstance: any = null;
 const disableContentPriority = process.env.DISABLE_CONTENT_PRIORITY === 'true' || process.env.NODE_ENV === 'test';
 
 let contentPriorityConfig: ContentPriorityConfig = {
-  prioritizeContent: !disableContentPriority,
-  autoSuggestGetContent: !disableContentPriority
+  ...DEFAULT_CONTENT_PRIORITY_CONFIG
+};
+
+let screenshotSaveConfig: ScreenshotSaveConfig = {
+  ...DEFAULT_SCREENSHOT_SAVE_CONFIG
 };
 
 
@@ -213,11 +213,12 @@ export function isCircuitBreakerOpen(): boolean {
 }
 
 // Windows Registry Chrome detection
+import { execSync } from 'child_process';
+
 function getWindowsChromeFromRegistry(): string | null {
   if (process.platform !== 'win32') return null;
   
   try {
-    const { execSync } = require('child_process');
     
     const registryQueries = [
       'reg query "HKEY_CURRENT_USER\\Software\\Google\\Chrome\\BLBeacon" /v version 2>nul',
@@ -869,5 +870,13 @@ export function getContentPriorityConfig() {
 
 export function updateContentPriorityConfig(config: Partial<ContentPriorityConfig>) {
   contentPriorityConfig = { ...contentPriorityConfig, ...config };
+}
+
+export function getScreenshotSaveConfig() {
+  return screenshotSaveConfig;
+}
+
+export function updateScreenshotSaveConfig(config: Partial<ScreenshotSaveConfig>) {
+  screenshotSaveConfig = { ...screenshotSaveConfig, ...config };
 }
 

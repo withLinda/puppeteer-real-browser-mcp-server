@@ -1,5 +1,5 @@
-import { initializeBrowser, closeBrowser, getBrowserInstance, getPageInstance, getContentPriorityConfig, updateContentPriorityConfig } from '../browser-manager.js';
-import { withErrorHandling } from '../system-utils.js';
+import { initializeBrowser, closeBrowser, getBrowserInstance, getPageInstance, getContentPriorityConfig, updateContentPriorityConfig, getScreenshotSaveConfig, updateScreenshotSaveConfig } from '../browser-manager.js';
+import { withErrorHandling, validateScreenshotSaveConfig, sanitizeScreenshotConfig } from '../system-utils.js';
 import { validateWorkflow, recordExecution, workflowValidator } from '../workflow-validation.js';
 import { BrowserInitArgs } from '../tool-definitions.js';
 
@@ -12,12 +12,44 @@ export async function handleBrowserInit(args: BrowserInitArgs) {
         updateContentPriorityConfig(args.contentPriority);
       }
       
+      // Update screenshot save configuration if provided
+      if (args.screenshotConfig) {
+        // Validate the configuration
+        const validation = validateScreenshotSaveConfig(args.screenshotConfig);
+        if (!validation.isValid) {
+          throw new Error(`Invalid screenshot configuration: ${validation.errors.join(', ')}`);
+        }
+        
+        // Sanitize the configuration
+        const sanitizedConfig = sanitizeScreenshotConfig(args.screenshotConfig);
+        updateScreenshotSaveConfig(sanitizedConfig);
+        
+        // Log warnings if any
+        if (validation.warnings.length > 0) {
+          console.warn('Screenshot configuration warnings:', validation.warnings.join(', '));
+        }
+      }
+      
       await initializeBrowser(args);
       
       const config = getContentPriorityConfig();
-      const configMessage = config.prioritizeContent 
-        ? '\n\n💡 Content Priority Mode: get_content is prioritized for better reliability. Use get_content for page analysis instead of screenshots.'
-        : '';
+      const screenshotConfig = getScreenshotSaveConfig();
+      let configMessage = '';
+      
+      if (config.prioritizeContent && config.respectExplicitScreenshotRequests) {
+        configMessage = '\n\n💡 Balanced Mode: get_content is recommended for content analysis; screenshots available when explicitly requested or for visual tasks.';
+      } else if (config.prioritizeContent) {
+        configMessage = '\n\n💡 Content Priority Mode: get_content is prioritized for better reliability. Use get_content for page analysis instead of screenshots.';
+      } else {
+        configMessage = '\n\n💡 Flexible Mode: Both get_content and screenshot tools available without restrictions.';
+      }
+      
+      // Add screenshot auto-save information
+      if (screenshotConfig.autoSave) {
+        configMessage += `\n📁 Screenshot Auto-Save: Enabled (saving to ${screenshotConfig.saveFolder})`;
+      } else {
+        configMessage += `\n📁 Screenshot Auto-Save: Disabled`;
+      }
 
       const workflowMessage = '\n\n🔄 Workflow Status: Browser initialized\n' +
         '  • Next step: Use navigate to load a web page\n' +

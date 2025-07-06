@@ -547,9 +547,9 @@ AI: I'll capture just the navigation menu element.
 
 | Tool Name | Description | Required Parameters | Optional Parameters |
 |-----------|-------------|---------------------|-------------------|
-| `screenshot` | **EXPLICIT REQUEST ONLY** - Capture screenshots using anti-detection CDP method | None | `selector`, `fullPage`, `quality`, `format`, `timeout`, `maxRetries` |
+| `screenshot` | Capture screenshots for visual analysis, UI testing, documentation, or when specifically requested. Uses anti-detection CDP method. | None | `selector`, `fullPage`, `quality`, `format`, `timeout`, `maxRetries` |
 
-**⚠️ Important**: The `screenshot` tool is only triggered when users explicitly request "screenshot" - it's NOT used for content analysis (use `get_content` instead).
+**💡 Balanced Mode**: The system intelligently balances between content extraction and screenshot capture. Screenshots are prioritized for visual analysis tasks, while `get_content` is recommended for data extraction and content analysis.
 
 ## Advanced Features
 
@@ -662,6 +662,10 @@ When initializing with `browser_init`, you can configure:
 - `ignoreAllFlags`: true/false (Ignore all Chrome flags)
 - `proxy`: "https://proxy:8080" (Proxy server URL)
 - `plugins`: ["plugin1", "plugin2"] (Array of plugins to load)
+- `contentPriority`: Configure tool selection behavior:
+  - `prioritizeContent`: true/false (Prioritize get_content for content analysis)
+  - `autoSuggestGetContent`: true/false (Suggest get_content alternatives when other methods fail)
+  - `respectExplicitScreenshotRequests`: true/false (Allow screenshots when explicitly requested)
 - `connectOption`: Additional connection options like:
   - `slowMo`: 250 (Slow down operations by milliseconds)
   - `timeout`: 60,000 (Connection timeout)
@@ -705,6 +709,45 @@ When initializing the browser with `browser_init`, you can configure:
 }
 ```
 
+#### Content Priority Configuration (Balanced Mode)
+```json
+{
+  "contentPriority": {
+    "prioritizeContent": true,
+    "autoSuggestGetContent": true,
+    "respectExplicitScreenshotRequests": true
+  }
+}
+```
+
+**Balanced Mode** (default): Intelligently balances between content extraction and screenshots based on user intent.
+
+#### Legacy Content Priority Mode
+```json
+{
+  "contentPriority": {
+    "prioritizeContent": true,
+    "autoSuggestGetContent": true,
+    "respectExplicitScreenshotRequests": false
+  }
+}
+```
+
+**Legacy Mode**: Strongly favors get_content over screenshots for all requests.
+
+#### Flexible Mode
+```json
+{
+  "contentPriority": {
+    "prioritizeContent": false,
+    "autoSuggestGetContent": false,
+    "respectExplicitScreenshotRequests": true
+  }
+}
+```
+
+**Flexible Mode**: Both tools available without content prioritization guidance.
+
 #### Stealth Mode with Custom Options
 ```json
 {
@@ -718,6 +761,110 @@ When initializing the browser with `browser_init`, you can configure:
 }
 ```
 
+### Automatic Screenshot Saving
+
+The server automatically saves screenshots to your file system while still displaying them in the conversation. This feature is enabled by default and can be customized.
+
+#### Default Behavior
+- **Auto-save**: Enabled by default
+- **Save location**: `~/Desktop/Screenshots/` (cross-platform)
+- **Filename pattern**: `screenshot_{timestamp}_{domain}.png`
+- **File conflict**: Automatically increments filename (e.g., `screenshot_1.png`, `screenshot_2.png`)
+
+#### Basic Usage Examples
+
+**Take a screenshot (auto-saved to Desktop/Screenshots):**
+```
+User: "Take a screenshot of this page"
+```
+
+**Take a screenshot with custom save location:**
+```
+User: "Take a screenshot and save it to my Documents folder"
+```
+
+**Disable saving for one screenshot:**
+```
+User: "Take a screenshot but don't save it to file"
+```
+
+#### Configuration Examples
+
+**Custom save folder:**
+```json
+{
+  "screenshotConfig": {
+    "autoSave": true,
+    "saveFolder": "~/Documents/MyScreenshots",
+    "filenamePattern": "capture_{timestamp}.png"
+  }
+}
+```
+
+**Organized with date subfolders:**
+```json
+{
+  "screenshotConfig": {
+    "autoSave": true,
+    "saveFolder": "~/Desktop/Screenshots",
+    "createSubfolders": true,
+    "filenamePattern": "{domain}_{timestamp}.png"
+  }
+}
+```
+*Creates structure like: `~/Desktop/Screenshots/2024/01/15/example.com_2024-01-15_14-30-45.png`*
+
+**Custom filename patterns:**
+```json
+{
+  "screenshotConfig": {
+    "filenamePattern": "page_{domain}_{timestamp}.{format}",
+    "includeDomainInFilename": true
+  }
+}
+```
+
+**Available filename placeholders:**
+- `{timestamp}`: Current date and time (YYYY-MM-DD_HH-mm-ss)
+- `{domain}`: Website domain name (sanitized for filenames)
+- `{url_hash}`: Short hash of the full URL (8 characters)
+
+#### Per-Screenshot Options
+
+You can also override the default configuration for individual screenshots:
+
+**Custom filename for one screenshot:**
+```
+User: "Take a screenshot and save it as 'homepage-final.png'"
+```
+
+**Custom save location for one screenshot:**
+```
+User: "Take a screenshot and save it to ~/Pictures/"
+```
+
+#### Screenshot File Management
+
+- **Automatic conflict resolution**: Files are automatically renamed if they already exist
+- **Cross-platform paths**: Use `~` for home directory, works on Windows, macOS, and Linux
+- **File validation**: Invalid characters in filenames are automatically replaced
+- **Directory creation**: Save folders are created automatically if they don't exist
+
+#### Disabling Auto-Save
+
+**Disable globally:**
+```json
+{
+  "screenshotConfig": {
+    "autoSave": false
+  }
+}
+```
+
+**Disable for specific screenshot:**
+```
+User: "Take a screenshot but don't save it to disk"
+```
 
 ### Server Configuration
 

@@ -118,7 +118,8 @@ describe('Browser Handlers', () => {
         headless: true,
         contentPriority: {
           prioritizeContent: false,
-          autoSuggestGetContent: false
+          autoSuggestGetContent: false,
+          respectExplicitScreenshotRequests: true
         }
       };
 

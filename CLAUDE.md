@@ -52,4 +52,32 @@ IMPORTANT: Never skip the web research phase. Always state what you're web resea
   4. CDP (Chrome DevTools Protocol) approach perfect for bypassing detection methods
   5. Returns different objects/interfaces compared to regular Puppeteer
 
-(Rest of the existing content remains unchanged)
+## ES Module Error Prevention
+
+### TypeScript ES Module Import Guidelines
+- ALWAYS place ALL imports at the top of TypeScript files (module-level scope)
+- NEVER use imports inside functions, as this causes TypeScript to generate require() statements
+- Specific problems in ES module configuration:
+  - Project configured as ES module ("type": "module" in package.json)
+  - TypeScript compiler may generate require() statements when imports are used inside function scope
+- Files that commonly need import fixes:
+  - system-utils.ts - Ensure top-level import of execSync
+  - browser-manager.ts - Move execSync import to top
+  - screenshot-handlers.ts - Verify path imports are at top-level
+- Always rebuild after fixing imports: `npm run build` to ensure compiled JS files use proper ES module syntax
+
+### Import Pattern Examples
+- ❌ Bad Pattern (Generates require() in compiled JS):
+  ```typescript
+  function someFunction() {
+    const { execSync } = require('child_process'); // Avoid this
+  }
+  ```
+- ✅ Correct Pattern (Maintains ES module syntax):
+  ```typescript
+  import { execSync } from 'child_process';
+
+  function someFunction() {
+    // Use execSync here
+  }
+  ```

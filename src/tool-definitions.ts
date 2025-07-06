@@ -23,6 +23,17 @@ export const MAX_BROWSER_INIT_DEPTH = 2;
 export interface ContentPriorityConfig {
   prioritizeContent: boolean;
   autoSuggestGetContent: boolean;
+  respectExplicitScreenshotRequests: boolean;
+}
+
+// Screenshot automatic saving configuration interface
+export interface ScreenshotSaveConfig {
+  autoSave: boolean;
+  saveFolder: string;
+  filenamePattern: string;
+  createSubfolders: boolean;
+  includeDomainInFilename: boolean;
+  retentionDays?: number;
 }
 
 
@@ -31,7 +42,17 @@ const disableContentPriority = process.env.DISABLE_CONTENT_PRIORITY === 'true' |
 
 export const DEFAULT_CONTENT_PRIORITY_CONFIG: ContentPriorityConfig = {
   prioritizeContent: !disableContentPriority,
-  autoSuggestGetContent: !disableContentPriority
+  autoSuggestGetContent: !disableContentPriority,
+  respectExplicitScreenshotRequests: true
+};
+
+export const DEFAULT_SCREENSHOT_SAVE_CONFIG: ScreenshotSaveConfig = {
+  autoSave: true,
+  saveFolder: '~/Desktop/Screenshots',
+  filenamePattern: 'screenshot_{timestamp}_{domain}.png',
+  createSubfolders: false,
+  includeDomainInFilename: true,
+  retentionDays: undefined
 };
 
 
@@ -99,6 +120,47 @@ export const TOOLS = [
               description: 'Automatically suggest get_content alternatives when other methods fail',
               default: true,
             },
+            respectExplicitScreenshotRequests: {
+              type: 'boolean',
+              description: 'Allow screenshot tool when users explicitly request screenshots, bypassing content priority',
+              default: true,
+            },
+          },
+          additionalProperties: false,
+        },
+        screenshotConfig: {
+          type: 'object',
+          description: 'Configuration for automatic screenshot saving',
+          properties: {
+            autoSave: {
+              type: 'boolean',
+              description: 'Automatically save screenshots to file system',
+              default: true,
+            },
+            saveFolder: {
+              type: 'string',
+              description: 'Folder path to save screenshots (supports ~ for home directory, defaults to ~/Desktop/Screenshots)',
+              default: '~/Desktop/Screenshots',
+            },
+            filenamePattern: {
+              type: 'string',
+              description: 'Filename pattern with placeholders: {timestamp}, {domain}, {url_hash}',
+              default: 'screenshot_{timestamp}_{domain}.png',
+            },
+            createSubfolders: {
+              type: 'boolean',
+              description: 'Create date-based subfolders (YYYY/MM/DD) for organization',
+              default: false,
+            },
+            includeDomainInFilename: {
+              type: 'boolean',
+              description: 'Include domain name in filename for web screenshots',
+              default: true,
+            },
+            retentionDays: {
+              type: 'number',
+              description: 'Number of days to keep screenshots (optional cleanup)',
+            },
           },
           additionalProperties: false,
         },
@@ -127,7 +189,7 @@ export const TOOLS = [
   },
   {
     name: 'get_content',
-    description: '**Recommended** method to get page content (HTML or text) - More reliable than screenshots for content analysis and navigation tasks',
+    description: '**Recommended** method to get page content (HTML or text) - More reliable than screenshots for content analysis, data extraction, and navigation tasks',
     inputSchema: {
       type: 'object',
       properties: {
@@ -267,7 +329,7 @@ export const TOOLS = [
   },
   {
     name: 'screenshot',
-    description: '**EXPLICIT REQUEST ONLY** - Capture a screenshot when user specifically requests "screenshot". Uses anti-detection CDP method. NOT for content analysis - use get_content instead.',
+    description: 'Capture screenshots for visual analysis, UI testing, documentation, or when specifically requested. Uses anti-detection CDP method. For content analysis and data extraction, consider using get_content instead.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -303,6 +365,18 @@ export const TOOLS = [
           description: 'Maximum retry attempts',
           default: 2,
         },
+        saveToFile: {
+          type: 'boolean',
+          description: 'Save screenshot to file system (overrides global autoSave setting)',
+        },
+        customSaveFolder: {
+          type: 'string',
+          description: 'Custom folder path to save this screenshot (overrides global saveFolder)',
+        },
+        customFilename: {
+          type: 'string',
+          description: 'Custom filename for this screenshot (overrides pattern-based naming)',
+        },
       },
     },
   },
@@ -336,6 +410,7 @@ export interface BrowserInitArgs {
     [key: string]: any;
   };
   contentPriority?: ContentPriorityConfig;
+  screenshotConfig?: ScreenshotSaveConfig;
 }
 
 export interface NavigateArgs {
@@ -382,6 +457,9 @@ export interface ScreenshotArgs {
   format?: 'png' | 'jpeg';
   timeout?: number;
   maxRetries?: number;
+  saveToFile?: boolean;
+  customSaveFolder?: string;
+  customFilename?: string;
 }
 
 // Union type for all tool arguments
