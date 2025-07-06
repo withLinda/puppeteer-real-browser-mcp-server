@@ -265,6 +265,47 @@ export const TOOLS = [
       required: ['text'],
     },
   },
+  {
+    name: 'screenshot',
+    description: '**EXPLICIT REQUEST ONLY** - Capture a screenshot when user specifically requests "screenshot". Uses anti-detection CDP method. NOT for content analysis - use get_content instead.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        selector: {
+          type: 'string',
+          description: 'CSS selector to capture specific element (optional)',
+        },
+        fullPage: {
+          type: 'boolean',
+          description: 'Capture full page including content beyond viewport',
+          default: false,
+        },
+        quality: {
+          type: 'number',
+          description: 'Image quality (1-100, default: 90)',
+          minimum: 1,
+          maximum: 100,
+          default: 90,
+        },
+        format: {
+          type: 'string',
+          enum: ['png', 'jpeg'],
+          description: 'Image format',
+          default: 'png',
+        },
+        timeout: {
+          type: 'number',
+          description: 'Screenshot timeout in milliseconds',
+          default: 15000,
+        },
+        maxRetries: {
+          type: 'number',
+          description: 'Maximum retry attempts',
+          default: 2,
+        },
+      },
+    },
+  },
 ];
 
 // Tool name constants for type safety
@@ -279,6 +320,7 @@ export const TOOL_NAMES = {
   SOLVE_CAPTCHA: 'solve_captcha',
   RANDOM_SCROLL: 'random_scroll',
   FIND_SELECTOR: 'find_selector',
+  SCREENSHOT: 'screenshot',
 } as const;
 
 // Type definitions for tool inputs
@@ -333,6 +375,15 @@ export interface FindSelectorArgs {
   exact?: boolean;
 }
 
+export interface ScreenshotArgs {
+  selector?: string;
+  fullPage?: boolean;
+  quality?: number;
+  format?: 'png' | 'jpeg';
+  timeout?: number;
+  maxRetries?: number;
+}
+
 // Union type for all tool arguments
 export type ToolArgs = 
   | BrowserInitArgs
@@ -343,6 +394,7 @@ export type ToolArgs =
   | WaitArgs
   | SolveCaptchaArgs
   | FindSelectorArgs
+  | ScreenshotArgs
   | Record<string, never>; // For tools with no arguments
 
 // Tool categories for organization
@@ -351,4 +403,5 @@ export const TOOL_CATEGORIES = {
   NAVIGATION: [TOOL_NAMES.NAVIGATE, TOOL_NAMES.WAIT],
   INTERACTION: [TOOL_NAMES.CLICK, TOOL_NAMES.TYPE, TOOL_NAMES.SOLVE_CAPTCHA, TOOL_NAMES.RANDOM_SCROLL],
   CONTENT: [TOOL_NAMES.GET_CONTENT, TOOL_NAMES.FIND_SELECTOR],
+  CAPTURE: [TOOL_NAMES.SCREENSHOT], // Screenshot only triggered by explicit user request
 } as const;
