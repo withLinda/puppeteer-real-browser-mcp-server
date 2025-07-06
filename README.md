@@ -1,9 +1,7 @@
 
 # Puppeteer Real Browser MCP Server
 
-A Model Context Protocol (MCP) server that provides AI assistants with
-powerful, detection-resistant browser automation capabilities using
-puppeteer-real-browser.
+Provides AI assistants with powerful, detection-resistant browser automation capabilities built on ZFC Digital's puppeteer-real-browser package.
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
@@ -31,10 +29,10 @@ puppeteer-real-browser.
 ## Quick Start for Beginners
 
 ### What is this?
-This is an MCP (Model Context Protocol) server that lets AI assistants like Claude control a real web browser. Think of it as giving Claude "hands" to interact with websites - it can click buttons, fill forms, take screenshots, and much more, all while avoiding bot detection.
+This is an MCP (Model Context Protocol) server that lets AI assistants like Claude control a real web browser. Think of it as giving Claude "hands" to interact with websites - it can click buttons, fill forms, extract content, and much more, all while avoiding bot detection.
 
 ### Important: You DON'T Need to Install This Package!
-If you're just using this with Claude Desktop, you don't need to run `npm install`. The `npx` command in the configuration will automatically download and run the latest version for you.
+If you're just using this MCP server (not developing it), you don't need to run `npm install`. The `npx` command in the configuration will automatically download and run the latest version for you. Installation is only required for development purposes.
 
 ### Step-by-Step Setup
 
@@ -79,19 +77,18 @@ Close and reopen Claude Desktop completely.
 
 #### 4. Test It Works
 In Claude Desktop, try saying:
-> "Initialize a browser and navigate to google.com, then take a screenshot"
+> "Initialize a browser and navigate to google.com, then get the page content"
 
 If everything is working, Claude should be able to:
 - Start a browser
 - Navigate to Google
-- Take and show you a screenshot
+- Extract and show you the page content
 
 ### What Can You Do With It?
 
 Once set up, you can ask Claude to:
 - **Browse websites**: "Go to amazon.com and search for laptops"
 - **Fill forms**: "Fill out this contact form with my details"
-- **Take screenshots**: "Show me what this page looks like"
 - **Extract data**: "Get all the product prices from this page"
 - **Automate tasks**: "Log into my account and download my invoice"
 - **Solve captchas**: "Handle any captchas that appear"
@@ -109,7 +106,7 @@ and browser automation. It leverages puppeteer-real-browser to provide stealth
 browsing capabilities that can bypass common bot detection mechanisms.
 
 This server implements the Model Context Protocol (MCP), allowing AI
-assistants to control a real browser, take screenshots, extract content, and more.
+assistants to control a real browser, extract content, and more.
 
 ## Features
 
@@ -280,12 +277,12 @@ After adding the server:
 
 2. **Test the Server:**
    In Claude Code, try:
-   > "Initialize a browser and navigate to google.com, then take a screenshot"
+   > "Initialize a browser and navigate to google.com, then get the page content"
 
    If working correctly, you should see:
    - Browser initialization
    - Navigation to Google
-   - Screenshot displayed
+   - Page content extracted and displayed
 
 #### Configuration Scopes Explained
 
@@ -396,12 +393,12 @@ Alternative paths: `/usr/bin/chromium-browser`, `/snap/bin/chromium`
 After configuration:
 1. **Restart Cursor IDE completely**
 2. **Open a new chat** 
-3. **Test with**: "Initialize a browser and navigate to google.com, then take a screenshot"
+3. **Test with**: "Initialize a browser and navigate to google.com, then get the page content"
 
 If successful, you should see:
 - Browser window opening
 - Navigation to Google
-- Screenshot displayed in the chat
+- Page content extracted and displayed in the chat
 
 #### Cursor IDE Troubleshooting
 
@@ -450,9 +447,6 @@ User: "Initialize a browser and navigate to example.com"
 AI: I'll initialize a stealth browser and navigate to the website.
 [Uses browser_init and navigate tools]
 
-User: "Take a screenshot of the main content"
-AI: I'll capture a screenshot of the page.
-[Uses screenshot tool]
 ```
 
 #### Form Automation
@@ -493,7 +487,6 @@ AI: I'll set up the browser with your proxy configuration.
 |-----------|-------------|---------------------|-------------------|
 | `browser_init` | Initialize stealth browser with advanced options | None | `headless`, `disableXvfb`, `ignoreAllFlags`, `proxy`, `plugins`, `connectOption` |
 | `navigate` | Navigate to a URL | `url` | `waitUntil` |
-| `screenshot` | Take a screenshot of page or element | None | `fullPage`, `selector` |
 | `get_content` | Get page content (HTML or text) | None | `type`, `selector` |
 | `browser_close` | Close the browser instance | None | None |
 
@@ -951,7 +944,7 @@ A:
 A: Both are excellent choices, depending on your needs:
 
 **Claude Desktop:**
-- **Best for:** Simple web browsing automation, screenshot capture, basic form filling
+- **Best for:** Simple web browsing automation, content extraction, basic form filling
 - **Setup:** Manual JSON config file editing
 - **Sharing:** Individual use only
 - **Interface:** Desktop GUI application
@@ -1130,7 +1123,6 @@ npm run test:performance  # Browser performance benchmarking
 Performance tests measure:
 - Browser initialization timing (5 trials)
 - Navigation performance across different site types
-- Screenshot generation speed (viewport vs full page)
 - Concurrent operation handling
 - Session longevity testing (30+ operations over 30 seconds)
 
