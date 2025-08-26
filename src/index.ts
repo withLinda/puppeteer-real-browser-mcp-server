@@ -19,7 +19,7 @@ console.error('🔍 [DEBUG] MCP SDK imports completed successfully');
 
 // Import extracted modules
 console.error('🔍 [DEBUG] Loading tool definitions...');
-import { TOOLS, SERVER_INFO, CAPABILITIES, TOOL_NAMES, NavigateArgs, ClickArgs, TypeArgs, WaitArgs, SolveCaptchaArgs, FindSelectorArgs } from './tool-definitions.js';
+import { TOOLS, SERVER_INFO, CAPABILITIES, TOOL_NAMES, NavigateArgs, ClickArgs, TypeArgs, WaitArgs, SolveCaptchaArgs, FindSelectorArgs, SaveContentAsMarkdownArgs } from './tool-definitions.js';
 console.error('🔍 [DEBUG] Loading system utils...');
 import { withErrorHandling } from './system-utils.js';
 console.error('🔍 [DEBUG] Loading browser manager...');
@@ -33,6 +33,7 @@ import { handleBrowserInit, handleBrowserClose } from './handlers/browser-handle
 import { handleNavigate, handleWait } from './handlers/navigation-handlers.js';
 import { handleClick, handleType, handleSolveCaptcha, handleRandomScroll } from './handlers/interaction-handlers.js';
 import { handleGetContent, handleFindSelector } from './handlers/content-handlers.js';
+import { handleSaveContentAsMarkdown } from './handlers/file-handlers.js';
 
 console.error('🔍 [DEBUG] All modules loaded successfully');
 console.error(`🔍 [DEBUG] Server info: ${JSON.stringify(SERVER_INFO)}`);
@@ -129,6 +130,9 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
 
       case TOOL_NAMES.FIND_SELECTOR:
         return await handleFindSelector(args as unknown as FindSelectorArgs);
+
+      case TOOL_NAMES.SAVE_CONTENT_AS_MARKDOWN:
+        return await handleSaveContentAsMarkdown(args as unknown as SaveContentAsMarkdownArgs);
 
       default:
         throw new Error(`Unknown tool: ${name}`);

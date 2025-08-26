@@ -1,4 +1,6 @@
 
+⚠️ **UNDER MAINTENANCE** - This project is still being actively developed. Some features may be incomplete or change without notice.
+
 # Puppeteer Real Browser MCP Server
 
 Provides AI assistants with powerful, detection-resistant browser automation capabilities built on ZFC Digital's puppeteer-real-browser package.
@@ -479,6 +481,10 @@ AI: I'll extract the product information from the page.
 User: "Save the page content as text"
 AI: I'll get the text content of the entire page.
 [Uses get_content tool with type: 'text']
+
+User: "Save this page content as a markdown file"
+AI: I'll extract the page content and save it as a formatted markdown file.
+[Uses save_content_as_markdown tool with specified file path]
 ```
 
 
@@ -521,6 +527,12 @@ AI: I'll set up the browser with your proxy configuration.
 | Tool Name | Description | Required Parameters | Optional Parameters |
 |-----------|-------------|---------------------|-------------------|
 | `find_selector` | Find CSS selector for element containing specific text | `text` | `elementType`, `exact` |
+
+### Content Tools
+
+| Tool Name | Description | Required Parameters | Optional Parameters |
+|-----------|-------------|---------------------|-------------------|
+| `save_content_as_markdown` | Extract page content and save it as a formatted markdown file | `filePath` | `contentType`, `selector`, `formatOptions` |
 
 ### Anti-Detection Tools
 

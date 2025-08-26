@@ -265,6 +265,58 @@ export const TOOLS = [
       required: ['text'],
     },
   },
+  {
+    name: 'save_content_as_markdown',
+    description: 'Extract page content and save it as a formatted markdown file',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        filePath: {
+          type: 'string',
+          description: 'Absolute path where the markdown file should be saved (must end with .md)',
+        },
+        contentType: {
+          type: 'string',
+          enum: ['text', 'html'],
+          description: 'Type of content to extract and convert',
+          default: 'text',
+        },
+        selector: {
+          type: 'string',
+          description: 'Optional CSS selector to extract content from specific element',
+        },
+        formatOptions: {
+          type: 'object',
+          description: 'Options for markdown formatting',
+          properties: {
+            includeMetadata: {
+              type: 'boolean',
+              description: 'Include metadata header with timestamp and source URL',
+              default: true,
+            },
+            cleanupWhitespace: {
+              type: 'boolean',
+              description: 'Clean up excessive whitespace in the output',
+              default: true,
+            },
+            preserveLinks: {
+              type: 'boolean',
+              description: 'Preserve link URLs in markdown format',
+              default: true,
+            },
+            headingStyle: {
+              type: 'string',
+              enum: ['atx', 'setext'],
+              description: 'Heading style for markdown conversion',
+              default: 'atx',
+            },
+          },
+          additionalProperties: false,
+        },
+      },
+      required: ['filePath'],
+    },
+  },
 ];
 
 // Tool name constants for type safety
@@ -279,6 +331,7 @@ export const TOOL_NAMES = {
   SOLVE_CAPTCHA: 'solve_captcha',
   RANDOM_SCROLL: 'random_scroll',
   FIND_SELECTOR: 'find_selector',
+  SAVE_CONTENT_AS_MARKDOWN: 'save_content_as_markdown',
 } as const;
 
 // Type definitions for tool inputs
@@ -333,6 +386,18 @@ export interface FindSelectorArgs {
   exact?: boolean;
 }
 
+export interface SaveContentAsMarkdownArgs {
+  filePath: string;
+  contentType?: 'text' | 'html';
+  selector?: string;
+  formatOptions?: {
+    includeMetadata?: boolean;
+    cleanupWhitespace?: boolean;
+    preserveLinks?: boolean;
+    headingStyle?: 'atx' | 'setext';
+  };
+}
+
 // Union type for all tool arguments
 export type ToolArgs = 
   | BrowserInitArgs
@@ -343,6 +408,7 @@ export type ToolArgs =
   | WaitArgs
   | SolveCaptchaArgs
   | FindSelectorArgs
+  | SaveContentAsMarkdownArgs
   | Record<string, never>; // For tools with no arguments
 
 // Tool categories for organization
@@ -350,5 +416,5 @@ export const TOOL_CATEGORIES = {
   BROWSER_MANAGEMENT: [TOOL_NAMES.BROWSER_INIT, TOOL_NAMES.BROWSER_CLOSE],
   NAVIGATION: [TOOL_NAMES.NAVIGATE, TOOL_NAMES.WAIT],
   INTERACTION: [TOOL_NAMES.CLICK, TOOL_NAMES.TYPE, TOOL_NAMES.SOLVE_CAPTCHA, TOOL_NAMES.RANDOM_SCROLL],
-  CONTENT: [TOOL_NAMES.GET_CONTENT, TOOL_NAMES.FIND_SELECTOR],
+  CONTENT: [TOOL_NAMES.GET_CONTENT, TOOL_NAMES.FIND_SELECTOR, TOOL_NAMES.SAVE_CONTENT_AS_MARKDOWN],
 } as const;
