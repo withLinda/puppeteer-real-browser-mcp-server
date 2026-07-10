@@ -1,7 +1,8 @@
-import { connect } from 'puppeteer-real-browser';
 import * as fs from 'fs';
 import * as path from 'path';
-import * as net from 'net';
+import { execSync } from 'child_process';
+import type { ManagedBrowserLaunchOptions } from './managed-browser-session.js';
+import { managedBrowserSession } from './managed-browser-session.js';
 
 // Content prioritization configuration
 export interface ContentPriorityConfig {
@@ -47,8 +48,6 @@ let browserCircuitBreaker: CircuitBreakerState = {
   state: 'closed'
 };
 
-let currentRetryDepth = 0;
-const MAX_RETRY_DEPTH = 3;
 const CIRCUIT_BREAKER_THRESHOLD = 5;
 const CIRCUIT_BREAKER_TIMEOUT = 30000; // 30 seconds
 
@@ -127,57 +126,6 @@ export async function withTimeout<T>(
   });
 }
 
-// Port availability and connection utilities for enhanced resilience
-export async function isPortAvailable(port: number, host: string = '127.0.0.1'): Promise<boolean> {
-  return new Promise((resolve) => {
-    const server = net.createServer();
-    
-    server.listen(port, host, () => {
-      server.once('close', () => {
-        resolve(true);
-      });
-      server.close();
-    });
-    
-    server.on('error', () => {
-      resolve(false);
-    });
-  });
-}
-
-// Test localhost resolution and connectivity
-export async function testHostConnectivity(): Promise<{ localhost: boolean; ipv4: boolean; recommendedHost: string }> {
-  const testPort = 19222;
-  
-  try {
-    const localhostAvailable = await isPortAvailable(testPort, 'localhost');
-    const ipv4Available = await isPortAvailable(testPort, '127.0.0.1');
-    
-    return {
-      localhost: localhostAvailable,
-      ipv4: ipv4Available,
-      recommendedHost: ipv4Available ? '127.0.0.1' : 'localhost'
-    };
-  } catch (error) {
-    console.error('Host connectivity test failed:', error);
-    return {
-      localhost: false,
-      ipv4: true,
-      recommendedHost: '127.0.0.1'
-    };
-  }
-}
-
-// Get available port in range
-export async function findAvailablePort(startPort: number = 9222, endPort: number = 9322): Promise<number | null> {
-  for (let port = startPort; port <= endPort; port++) {
-    if (await isPortAvailable(port)) {
-      return port;
-    }
-  }
-  return null;
-}
-
 // Circuit breaker functions
 export function updateCircuitBreakerOnFailure(): void {
   browserCircuitBreaker.failureCount++;
@@ -217,8 +165,6 @@ function getWindowsChromeFromRegistry(): string | null {
   if (process.platform !== 'win32') return null;
   
   try {
-    const { execSync } = require('child_process');
-    
     const registryQueries = [
       'reg query "HKEY_CURRENT_USER\\Software\\Google\\Chrome\\BLBeacon" /v version 2>nul',
       'reg query "HKEY_LOCAL_MACHINE\\Software\\Google\\Chrome\\BLBeacon" /v version 2>nul',
@@ -471,323 +417,56 @@ export async function initializeBrowser(options?: any) {
     }
 
     const detectedChromePath = detectChromePath();
-    const customConfig = options?.customConfig ?? {};
-    const platform = process.platform;
+    const customConfig = { ...(options?.customConfig ?? {}) };
+    const defaultFlags = [
+      '--no-first-run',
+      '--no-default-browser-check',
+      '--disable-default-apps',
+      '--start-maximized',
+      '--disable-blink-features=AutomationControlled',
+    ];
+    const configuredFlags = Array.isArray(customConfig.chromeFlags)
+      ? customConfig.chromeFlags as string[]
+      : Array.isArray(customConfig.args)
+        ? customConfig.args as string[]
+        : defaultFlags;
+    const chromeFlags = options?.proxy
+      ? [...configuredFlags, `--proxy-server=${options.proxy}`]
+      : configuredFlags;
 
-
-    const getOptimalChromeFlags = (isWindows: boolean, isRetry: boolean = false): string[] => {
-      // 2025 best practices: Minimal, secure, performance-focused flags
-      const baseFlags = [
-        '--no-first-run',
-        '--no-default-browser-check', 
-        '--disable-default-apps',
-        '--disable-blink-features=AutomationControlled', // Essential for stealth
-        '--start-maximized', // UI convenience, minimal performance impact
-      ];
-
-      // Add platform-specific flags only when absolutely necessary
-      const platformFlags: string[] = [];
-      
-      if (isWindows) {
-        // Only add Windows-specific flags if there are compatibility issues
-        // Note: --no-sandbox removed for security (not needed for desktop automation)
-        // Note: --disable-gpu removed unless headless mode has issues
-      }
-
-      // Emergency fallback flags for retry attempts only
-      if (isRetry) {
-        platformFlags.push(
-          '--disable-extensions',
-          '--disable-plugins',
-          '--remote-debugging-port=0',
-        );
-      }
-
-      return [...baseFlags, ...platformFlags];
-    };
-
-    const isRetryAttempt = options?._isRetryAttempt ?? false;
-    const useIgnoreAllFlags = options?.ignoreAllFlags ?? true;
-
-    const chromeConfig = {
-      ignoreDefaultFlags: false,
-      chromeFlags: useIgnoreAllFlags ? [
-        '--no-first-run',
-        '--no-default-browser-check',
-        '--disable-default-apps',
-        '--start-maximized',
-        '--disable-blink-features=AutomationControlled'
-      ] : getOptimalChromeFlags(platform === 'win32', isRetryAttempt),
-      ...customConfig
-    };
-
-    if (detectedChromePath && !chromeConfig.chromePath) {
-      chromeConfig.chromePath = detectedChromePath;
-    }
-
-    const connectOptions: any = {
-      headless: options?.headless ?? false,
-      customConfig: chromeConfig,
-      turnstile: true,
-      disableXvfb: options?.disableXvfb ?? true,
-      ignoreAllFlags: options?.ignoreAllFlags ?? true,
-      args: useIgnoreAllFlags ? [
-        '--no-first-run',
-        '--no-default-browser-check',
-        '--disable-default-apps',
-        '--start-maximized',
-        '--disable-blink-features=AutomationControlled'
-      ] : [],
+    const launchOptions: ManagedBrowserLaunchOptions = {
       connectOption: {
         defaultViewport: null,
-        timeout: platform === 'win32' ? 60000 : 30000,
+        timeout: process.platform === 'win32' ? 60_000 : 30_000,
         ...(options?.connectOption ?? {}),
       },
+      customConfig: {
+        ...customConfig,
+        chromeFlags,
+        ignoreDefaultFlags: customConfig.ignoreDefaultFlags === true,
+      },
+      disableXvfb: options?.disableXvfb ?? true,
+      executablePath: detectedChromePath ?? undefined,
+      headless: options?.headless ?? false,
+      profilePath: options?.profilePath,
+      proxy: options?.proxy,
+      turnstile: true,
     };
 
-    if (options?.proxy) {
-      connectOptions.customConfig.chromeFlags.push(`--proxy-server=${options.proxy}`);
+    console.error('🔄 Starting one MCP-owned Chrome process...');
+    try {
+      const { browser, page } = await managedBrowserSession.launch(launchOptions);
+      browserInstance = browser;
+      pageInstance = page;
+      updateCircuitBreakerOnSuccess();
+      console.error(`✅ Browser initialized; owned PID: ${managedBrowserSession.ownedPid ?? 'unknown'}`);
+      return { browser, page };
+    } catch (error) {
+      updateCircuitBreakerOnFailure();
+      const message = error instanceof Error ? error.message : String(error);
+      console.error(`❌ MCP-owned Chrome launch failed: ${message}`);
+      throw new Error(`Browser initialization failed: ${message}`, { cause: error });
     }
-
-    if (options?.plugins && Array.isArray(options.plugins)) {
-      connectOptions.plugins = options.plugins;
-    }
-
-    console.error('🔍 Testing network connectivity...');
-    const hostTest = await testHostConnectivity();
-    console.error(`   localhost available: ${hostTest.localhost}`);
-    console.error(`   127.0.0.1 available: ${hostTest.ipv4}`);
-    console.error(`   recommended host: ${hostTest.recommendedHost}`);
-
-    const availablePort = await findAvailablePort();
-    if (availablePort) {
-      console.error(`🔍 Found available debugging port: ${availablePort}`);
-    } else {
-      console.error('⚠️  No available ports found in range 9222-9322, using system-assigned port');
-    }
-
-    const createConnectionStrategy = (strategyName: string, modifications: any = {}) => {
-      const strategy = {
-        ...connectOptions,
-        ...modifications,
-        customConfig: {
-          ...chromeConfig,
-          ...modifications.customConfig,
-          chromeFlags: [
-            ...(modifications.customConfig?.chromeFlags || chromeConfig.chromeFlags),
-            ...(availablePort ? [`--remote-debugging-port=${availablePort}`] : ['--remote-debugging-port=0'])
-          ]
-        }
-      };
-      
-      return { strategyName, strategy };
-    };
-
-    // Primary strategy: User-defined configuration without --no-sandbox
-    const primaryStrategy = {
-      strategyName: 'User-Defined Configuration',
-      strategy: {
-        executablePath: detectedChromePath,
-        headless: options?.headless ?? false,
-        turnstile: true,
-        args: [
-          "--start-maximized",
-          "--disable-blink-features=AutomationControlled",
-        ],
-        disableXvfb: true,
-        ignoreAllFlags: true,
-        customConfig: {
-          ignoreDefaultFlags: false,
-          chromeFlags: [
-            "--no-first-run",
-            "--no-default-browser-check",
-            "--disable-default-apps",
-            "--start-maximized",
-            "--disable-blink-features=AutomationControlled",
-          ]
-        },
-        connectOption: {
-          defaultViewport: null,
-        },
-      }
-    };
-
-    const connectionStrategies = [
-      primaryStrategy,
-      
-      // Fallback strategies only if primary fails
-      createConnectionStrategy('Minimal Configuration', {
-        customConfig: {
-          ignoreDefaultFlags: false,
-          chromeFlags: [
-            '--no-first-run',
-            '--no-default-browser-check',
-            '--disable-default-apps',
-            '--start-maximized',
-            '--disable-blink-features=AutomationControlled'
-          ]
-        }
-      }),
-      
-      createConnectionStrategy('Optimal Configuration', {
-        customConfig: {
-          ignoreDefaultFlags: false,
-          chromeFlags: [
-            '--no-first-run',
-            '--no-default-browser-check',
-            '--disable-default-apps',
-            '--start-maximized',
-            '--disable-blink-features=AutomationControlled'
-          ]
-        }
-      }),
-      
-      createConnectionStrategy('Network Fallback', {
-        customConfig: {
-          ignoreDefaultFlags: false,
-          chromeFlags: [
-            '--no-first-run',
-            '--no-default-browser-check',
-            '--disable-default-apps',
-            '--start-maximized',
-            '--disable-blink-features=AutomationControlled',
-            '--disable-web-security',
-            '--disable-features=VizDisplayCompositor',
-            ...(hostTest.recommendedHost === '127.0.0.1' ? ['--remote-debugging-address=127.0.0.1'] : [])
-          ]
-        }
-      })
-    ];
-
-    let lastError: Error | null = null;
-
-    for (let strategyIndex = 0; strategyIndex < connectionStrategies.length; strategyIndex++) {
-      const { strategyName, strategy } = connectionStrategies[strategyIndex];
-      
-      try {
-        console.error(`🔄 Attempting browser connection using ${strategyName}...`);
-        
-        const result = await withTimeout(async () => {
-          try {
-            console.error(`   Strategy config: ${JSON.stringify({
-              headless: strategy.headless,
-              ignoreAllFlags: strategy.ignoreAllFlags,
-              chromeFlags: strategy.customConfig?.chromeFlags || 'none',
-              chromePath: strategy.customConfig?.chromePath || 'default'
-            })}`);
-            
-            const connectResult = await connect(strategy);
-            console.error(`   ✅ Connection successful with ${strategyName}`);
-            return connectResult;
-          } catch (connectionError) {
-            console.error(`   ❌ Connection failed: ${connectionError instanceof Error ? connectionError.message : String(connectionError)}`);
-            
-            const errorMsg = connectionError instanceof Error ? connectionError.message : String(connectionError);
-            
-            if (errorMsg.includes('ECONNREFUSED') || errorMsg.includes('localhost') || errorMsg.includes('127.0.0.1')) {
-              console.error(`   Connection error detected, trying host fallback...`);
-              
-              const fallbackHost = hostTest.recommendedHost === '127.0.0.1' ? 'localhost' : '127.0.0.1';
-              const fallbackStrategy = {
-                ...strategy,
-                customConfig: {
-                  ...strategy.customConfig,
-                  chromeFlags: [
-                    ...strategy.customConfig.chromeFlags.filter((flag: string) => !flag.includes('remote-debugging-address')),
-                    `--remote-debugging-address=${fallbackHost}`
-                  ]
-                }
-              };
-              
-              console.error(`   Trying fallback with --remote-debugging-address=${fallbackHost}...`);
-              return await connect(fallbackStrategy);
-            }
-            
-            throw connectionError;
-          }
-        }, platform === 'win32' ? 180000 : 150000, `browser-connection-${strategyName.toLowerCase().replace(/\s+/g, '-')}`);
-        
-        const { browser, page } = result;
-
-        browserInstance = browser;
-        pageInstance = page;
-
-
-        console.error(`✅ Browser initialized successfully using ${strategyName}`);
-        updateCircuitBreakerOnSuccess();
-        return { browser, page };
-        
-      } catch (error) {
-        lastError = error instanceof Error ? error : new Error(String(error));
-        console.error(`❌ ${strategyName} failed:`, lastError.message);
-        
-        if (lastError.message.includes('ECONNREFUSED')) {
-          console.error(`   🔍 ECONNREFUSED detected - likely Chrome connection/port issue`);
-        } else if (lastError.message.includes('ENOENT') || lastError.message.includes('spawn')) {
-          console.error(`   🔍 Chrome executable issue detected`);
-        } else if (lastError.message.includes('timeout')) {
-          console.error(`   🔍 Connection timeout - Chrome may be slow to start`);
-        }
-        
-        if (strategyIndex < connectionStrategies.length - 1) {
-          const delayMs = 2000 + (strategyIndex * 1000);
-          console.error(`⏳ Waiting ${delayMs/1000} seconds before trying next strategy...`);
-          await new Promise(resolve => setTimeout(resolve, delayMs));
-        }
-      }
-    }
-
-    updateCircuitBreakerOnFailure();
-    
-    const errorMessage = lastError ? lastError.message : 'Unknown connection error';
-    
-    if (errorMessage.includes('ENOENT') || errorMessage.includes('spawn') || errorMessage.includes('chrome') || errorMessage.includes('ECONNREFUSED')) {
-      if (platform === 'win32') {
-        console.error(`❌ All browser connection strategies failed on Windows:`);
-        console.error(`   Final Error: ${errorMessage}`);
-        console.error(`\n   🔧 Enhanced Windows Troubleshooting Solutions:`);
-        
-        if (errorMessage.includes('ECONNREFUSED')) {
-          console.error(`\n   🚨 ECONNREFUSED Error Specific Solutions:`);
-          console.error(`   1. Port/Connection Issues:`);
-          console.error(`      - Chrome DevTools Protocol port is being blocked`);
-          console.error(`      - Add Chrome to Windows Firewall exceptions`);
-          console.error(`      - Check if localhost resolves to 127.0.0.1 (run: ping localhost)`);
-          console.error(`      - Try different Chrome flags: --remote-debugging-port=0`);
-          console.error(`\n   2. Network Configuration:`);
-          console.error(`      - Disable VPN/proxy temporarily`);
-          console.error(`      - Check Windows hosts file (C:\\Windows\\System32\\drivers\\etc\\hosts)`);
-          console.error(`      - Ensure localhost points to 127.0.0.1`);
-          console.error(`\n   3. Chrome Process Management:`);
-          console.error(`      - Kill all chrome.exe processes in Task Manager`);
-          console.error(`      - Clear Chrome user data: %LOCALAPPDATA%\\Google\\Chrome\\User Data`);
-          console.error(`      - Try running Chrome manually to test: chrome.exe --remote-debugging-port=9222`);
-        }
-        
-        console.error(`\n   🔧 General Solutions:`);
-        console.error(`   1. Environment Variables (Recommended):`);
-        console.error(`      - Set CHROME_PATH environment variable`);
-        console.error(`      - Example: set CHROME_PATH="C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe"`);
-        console.error(`\n   2. Chrome Installation:`);
-        console.error(`      - Download/reinstall Chrome: https://www.google.com/chrome/`);
-        console.error(`      - Try Chrome Canary: https://www.google.com/chrome/canary/`);
-        console.error(`\n   3. Permissions & Security:`);
-        console.error(`      - Run as Administrator`);
-        console.error(`      - Add Chrome to Windows Defender exclusions`);
-        console.error(`      - Temporarily disable antivirus software`);
-        console.error(`\n   4. Advanced Configuration:`);
-        console.error(`      - Use customConfig.chromePath in browser_init`);
-        console.error(`      - Try headless mode: {"headless": true}`);
-        console.error(`      - Use environment variable: PUPPETEER_EXECUTABLE_PATH`);
-      } else {
-        console.error(`❌ Browser launch failed on ${platform}:`);
-        console.error(`   Error: ${errorMessage}`);
-      }
-      
-      throw new Error(`Browser initialization failed after trying all strategies: ${errorMessage}. See console for platform-specific troubleshooting steps.`);
-    }
-    
-    throw lastError || new Error('Unknown browser initialization error');
   } finally {
     browserInitDepth--;
   }
@@ -795,63 +474,24 @@ export async function initializeBrowser(options?: any) {
 
 // Close browser function
 export async function closeBrowser() {
-  if (browserInstance) {
-    try {
-      const pages = await browserInstance.pages();
-      for (const page of pages) {
-        try {
-          await page.close();
-        } catch (error) {
-          console.error('Error closing page:', error);
-        }
-      }
-      
-      await browserInstance.close();
-      
-      if (browserInstance.process() != null) {
-        try {
-          browserInstance.process().kill('SIGTERM');
-          await new Promise(resolve => setTimeout(resolve, 1000));
-          
-          if (browserInstance.process() != null && !browserInstance.process().killed) {
-            browserInstance.process().kill('SIGKILL');
-          }
-        } catch (error) {
-          console.error('Error force-killing browser process:', error);
-        }
-      }
-    } catch (error) {
-      console.error('Error closing browser:', error);
-      
-      if (browserInstance && browserInstance.process() != null) {
-        try {
-          browserInstance.process().kill('SIGKILL');
-        } catch (killError) {
-          console.error('Error force-killing browser process with SIGKILL:', killError);
-        }
-      }
-    } finally {
-      browserInstance = null;
-      pageInstance = null;
-    }
+  try {
+    await managedBrowserSession.close();
+  } catch (error) {
+    console.error('Error closing browser:', error);
+  } finally {
+    browserInstance = null;
+    pageInstance = null;
   }
 }
 
-// Force kill all Chrome processes system-wide
-export async function forceKillAllChromeProcesses() {
-  try {
-    const { spawn } = await import('child_process');
-    
-    if (process.platform !== 'win32') {
-      spawn('pkill', ['-f', 'Google Chrome'], { stdio: 'ignore' });
-      spawn('pkill', ['-f', 'chrome'], { stdio: 'ignore' });
-    } else {
-      spawn('taskkill', ['/F', '/IM', 'chrome.exe'], { stdio: 'ignore' });
-      spawn('taskkill', ['/F', '/IM', 'GoogleChrome.exe'], { stdio: 'ignore' });
-    }
-  } catch (error) {
-    console.error('Error force-killing Chrome processes:', error);
-  }
+export function emergencyCloseBrowser(): void {
+  managedBrowserSession.emergencyClose();
+  browserInstance = null;
+  pageInstance = null;
+}
+
+export function getOwnedBrowserPid(): number | null {
+  return managedBrowserSession.ownedPid;
 }
 
 // Getters for browser instances
@@ -870,4 +510,3 @@ export function getContentPriorityConfig() {
 export function updateContentPriorityConfig(config: Partial<ContentPriorityConfig>) {
   contentPriorityConfig = { ...contentPriorityConfig, ...config };
 }
-

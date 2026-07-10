@@ -1,5 +1,10 @@
 # Puppeteer-Real-Browser Screenshot Implementation Guide
 
+> Historical note: version 1.6.0 no longer uses `puppeteer-real-browser` as a
+> runtime dependency. The screenshot lessons below still explain why this
+> project prefers CDP-based capture, but lifecycle and cleanup behavior now
+> belongs to `src/managed-browser-session.ts`.
+
 ## Overview
 
 This document outlines the specific challenges and solutions for implementing screenshot functionality with `puppeteer-real-browser`, based on analysis of issue #7 and extensive unit testing.
@@ -296,8 +301,7 @@ it('should respect timeout limits', async () => {
 # Monitor Chrome processes
 ps aux | grep -i chrome | grep -v grep
 
-# Clean up zombie processes
-pkill -f "Google Chrome" || true
+# Cleanup is ownership-scoped. Use browser_close for the session started by this server.
 ```
 
 ## Migration from Regular Puppeteer

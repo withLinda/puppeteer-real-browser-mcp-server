@@ -1,4 +1,4 @@
-// Removed duplicate import - using standard setTimeout
+import { execFileSync } from 'node:child_process';
 
 // Generic error handling wrapper
 export async function withErrorHandling<T>(
@@ -94,11 +94,10 @@ export async function executeCommand(
     stdio?: 'ignore' | 'inherit' | 'pipe';
   } = {}
 ): Promise<string> {
-  const { execSync } = require('child_process');
   const { timeout = 5000, encoding = 'utf8', stdio = 'pipe' } = options;
   
   try {
-    const result = execSync(`${command} ${args.join(' ')}`, {
+    const result = execFileSync(command, args, {
       encoding,
       timeout,
       stdio

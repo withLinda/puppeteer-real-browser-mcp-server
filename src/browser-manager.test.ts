@@ -10,14 +10,10 @@
 
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import * as fs from 'fs';
-import * as net from 'net';
 import {
   BrowserErrorType,
   categorizeError,
   withTimeout,
-  isPortAvailable,
-  testHostConnectivity,
-  findAvailablePort,
   updateCircuitBreakerOnFailure,
   updateCircuitBreakerOnSuccess,
   isCircuitBreakerOpen,
@@ -27,16 +23,19 @@ import {
   getBrowserInstance,
   getPageInstance,
   getContentPriorityConfig,
-  updateContentPriorityConfig,
-  forceKillAllChromeProcesses
+  updateContentPriorityConfig
 } from './browser-manager.js';
 
 // Mock external dependencies
 vi.mock('fs');
-vi.mock('net');
 vi.mock('child_process');
-vi.mock('puppeteer-real-browser', () => ({
-  connect: vi.fn()
+vi.mock('./managed-browser-session.js', () => ({
+  managedBrowserSession: {
+    close: vi.fn(),
+    emergencyClose: vi.fn(),
+    launch: vi.fn(),
+    ownedPid: null,
+  }
 }));
 
 describe('Browser Manager', () => {
@@ -44,27 +43,6 @@ describe('Browser Manager', () => {
     vi.clearAllMocks();
     vi.resetModules();
   });
-
-  // Helper function to create mock server for port testing
-  const createMockServer = (shouldSucceed: boolean = true) => {
-    return {
-      listen: vi.fn((port, host, callback) => {
-        if (shouldSucceed) {
-          callback();
-        }
-        return createMockServer(shouldSucceed);
-      }),
-      close: vi.fn(),
-      once: vi.fn((event, callback) => {
-        if (event === 'close') callback();
-      }),
-      on: vi.fn((event, callback) => {
-        if (!shouldSucceed && event === 'error') {
-          callback(new Error('EADDRINUSE'));
-        }
-      })
-    };
-  };
 
   describe('Error Categorization', () => {
     it('should categorize FRAME_DETACHED error correctly', () => {
@@ -201,84 +179,6 @@ describe('Browser Manager', () => {
       
       // Assert: Should clear timeout
       expect(clearTimeoutSpy).toHaveBeenCalled();
-    });
-  });
-
-  describe('Port Availability', () => {
-    it('should return true when port is available', async () => {
-      // Arrange: Mock net.createServer to succeed
-      const mockServer = createMockServer(true);
-      vi.mocked(net.createServer).mockReturnValue(mockServer as any);
-      
-      // Act: Check port availability
-      const result = await isPortAvailable(9222);
-      
-      // Assert: Should return true
-      expect(result).toBe(true);
-      expect(mockServer.listen).toHaveBeenCalledWith(9222, '127.0.0.1', expect.any(Function));
-    });
-
-    it('should return false when port is not available', async () => {
-      // Arrange: Mock net.createServer to fail
-      const mockServer = createMockServer(false);
-      vi.mocked(net.createServer).mockReturnValue(mockServer as any);
-      
-      // Act: Check port availability
-      const result = await isPortAvailable(9222);
-      
-      // Assert: Should return false
-      expect(result).toBe(false);
-    });
-
-    it('should use custom host when provided', async () => {
-      // Arrange: Mock net.createServer to succeed
-      const mockServer = createMockServer(true);
-      vi.mocked(net.createServer).mockReturnValue(mockServer as any);
-      
-      // Act: Check port availability with custom host
-      await isPortAvailable(9222, 'localhost');
-      
-      // Assert: Should use custom host
-      expect(mockServer.listen).toHaveBeenCalledWith(9222, 'localhost', expect.any(Function));
-    });
-  });
-
-  describe('Host Connectivity Testing', () => {
-    it('should return connectivity results structure', async () => {
-      // Arrange & Act: Test host connectivity (real implementation)
-      const result = await testHostConnectivity();
-      
-      // Assert: Should return expected structure regardless of actual connectivity
-      expect(result).toHaveProperty('localhost');
-      expect(result).toHaveProperty('ipv4');
-      expect(result).toHaveProperty('recommendedHost');
-      expect(typeof result.localhost).toBe('boolean');
-      expect(typeof result.ipv4).toBe('boolean');
-      expect(typeof result.recommendedHost).toBe('string');
-      expect(['localhost', '127.0.0.1']).toContain(result.recommendedHost);
-    });
-  });
-
-  describe('Available Port Finding', () => {
-    it('should return a valid port number or null', async () => {
-      // Arrange & Act: Find available port in a reasonable range
-      const result = await findAvailablePort(9222, 9224);
-      
-      // Assert: Should return valid port number or null
-      if (result !== null) {
-        expect(result).toBeGreaterThanOrEqual(9222);
-        expect(result).toBeLessThanOrEqual(9224);
-      } else {
-        expect(result).toBe(null);
-      }
-    });
-
-    it('should handle empty port range', async () => {
-      // Arrange & Act: Find available port in impossible range
-      const result = await findAvailablePort(9999, 9998);
-      
-      // Assert: Should return null for invalid range
-      expect(result).toBe(null);
     });
   });
 
@@ -492,25 +392,6 @@ describe('Browser Manager', () => {
       
       // Assert: Should return page (null initially)
       expect(page).toBe(null);
-    });
-  });
-
-  describe('Force Kill Chrome Processes', () => {
-    it('should execute without throwing errors', async () => {
-      // Arrange & Act: Force kill Chrome processes
-      // Act & Assert: Should not throw error regardless of platform
-      await expect(forceKillAllChromeProcesses()).resolves.toBeUndefined();
-    });
-
-    it('should handle different platforms', async () => {
-      // Arrange: Test with current platform
-      const originalPlatform = process.platform;
-      
-      // Act: Execute force kill
-      await forceKillAllChromeProcesses();
-      
-      // Assert: Should complete without error
-      expect(process.platform).toBe(originalPlatform);
     });
   });
 });

@@ -23,9 +23,8 @@ import { TOOLS, SERVER_INFO, CAPABILITIES, TOOL_NAMES, NavigateArgs, ClickArgs, 
 console.error('🔍 [DEBUG] Loading system utils...');
 import { withErrorHandling } from './system-utils.js';
 console.error('🔍 [DEBUG] Loading browser manager...');
-import { closeBrowser, forceKillAllChromeProcesses } from './browser-manager.js';
-console.error('🔍 [DEBUG] Loading core infrastructure...');
-import { setupProcessCleanup, MCP_SERVER_CONFIG } from './core-infrastructure.js';
+import { closeBrowser, emergencyCloseBrowser } from './browser-manager.js';
+import { installProcessLifecycle, ShutdownCoordinator } from './shutdown-coordinator.js';
 
 // Import handlers
 console.error('🔍 [DEBUG] Loading handlers...');
@@ -59,15 +58,6 @@ server.setRequestHandler(InitializeRequestSchema, async (request) => {
     serverInfo: SERVER_INFO,
   };
   console.error(`🔍 [DEBUG] Sending initialize response: ${JSON.stringify(response)}`);
-  
-  // Add a small delay to see if there are any immediate errors after response
-  setTimeout(() => {
-    console.error(`🔍 [DEBUG] 1 second after initialize response - server still alive`);
-  }, 1000);
-  
-  setTimeout(() => {
-    console.error(`🔍 [DEBUG] 5 seconds after initialize response - server still alive`);
-  }, 5000);
   
   return response;
 });
@@ -153,17 +143,30 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
   }
 });
 
+const shutdownCoordinator = new ShutdownCoordinator({
+  closeBrowser,
+  closeServer: async () => {
+    await server.close();
+  },
+  emergencyCloseBrowser,
+  exit: (code) => process.exit(code),
+  log: (message, error) => {
+    if (error === undefined) {
+      console.error(`🧹 ${message}`);
+    } else {
+      console.error(`🧹 ${message}:`, error);
+    }
+  },
+  setExitCode: (code) => {
+    process.exitCode = code;
+  },
+});
+
+installProcessLifecycle(shutdownCoordinator);
+
 // Main function to start the server
 async function main(): Promise<void> {
   console.error('🔍 [DEBUG] Main function starting...');
-  
-  // Setup process cleanup handlers
-  console.error('🔍 [DEBUG] Setting up process cleanup handlers...');
-  setupProcessCleanup(async () => {
-    console.error('🔍 [DEBUG] Process cleanup triggered');
-    await closeBrowser();
-    await forceKillAllChromeProcesses();
-  });
 
   // Create and start the server transport
   console.error('🔍 [DEBUG] Creating StdioServerTransport...');
@@ -181,91 +184,14 @@ async function main(): Promise<void> {
     console.error('💡 Content priority mode: Enabled (use get_content for better reliability)');
     
     console.error('🔍 [DEBUG] Server is now ready and waiting for requests...');
-    
-    // Keep the process alive by maintaining the connection
-    console.error('🔍 [DEBUG] Maintaining process alive - server will wait for requests');
-    
-    // Add a heartbeat to confirm the process is still running
-    const heartbeat = setInterval(() => {
-      console.error(`🔍 [DEBUG] Heartbeat - Server alive at ${new Date().toISOString()}`);
-    }, 30000); // Every 30 seconds
-    
-    // Cleanup heartbeat on process exit
-    process.on('exit', () => {
-      console.error('🔍 [DEBUG] Process exiting - clearing heartbeat');
-      clearInterval(heartbeat);
-    });
-    
   }, 'Failed to start MCP server');
   
   console.error('🔍 [DEBUG] Main function completed - server should be running');
 }
 
-// Enhanced error handling with debug info
-console.error('🔍 [DEBUG] Setting up error handlers...');
-
-process.on('uncaughtException', (error) => {
-  console.error(`🔍 [DEBUG] Uncaught exception at ${new Date().toISOString()}`);
-  console.error('❌ Uncaught exception:', error);
-  console.error(`🔍 [DEBUG] Stack trace:`, error.stack);
-  process.exit(1);
+void main().catch(async (error) => {
+  console.error(`🔍 [DEBUG] Main function failed at ${new Date().toISOString()}`);
+  console.error('❌ Failed to start server:', error);
+  console.error('🔍 [DEBUG] Error stack:', error instanceof Error ? error.stack : undefined);
+  await shutdownCoordinator.requestShutdown('startup-failure', 1);
 });
-
-process.on('unhandledRejection', (reason, promise) => {
-  console.error(`🔍 [DEBUG] Unhandled rejection at ${new Date().toISOString()}`);
-  console.error('❌ Unhandled rejection:', reason);
-  console.error(`🔍 [DEBUG] Promise:`, promise);
-  process.exit(1);
-});
-
-// Process lifecycle debugging
-process.on('exit', (code) => {
-  console.error(`🔍 [DEBUG] Process exiting with code: ${code} at ${new Date().toISOString()}`);
-});
-
-process.on('beforeExit', (code) => {
-  console.error(`🔍 [DEBUG] Before exit event with code: ${code} at ${new Date().toISOString()}`);
-});
-
-process.on('SIGTERM', () => {
-  console.error(`🔍 [DEBUG] SIGTERM received at ${new Date().toISOString()}`);
-});
-
-process.on('SIGINT', () => {
-  console.error(`🔍 [DEBUG] SIGINT received at ${new Date().toISOString()}`);
-});
-
-console.error('🔍 [DEBUG] All error handlers registered');
-
-// Start the server
-console.error('🔍 [DEBUG] Checking if module is main...');
-console.error(`🔍 [DEBUG] import.meta.url: ${import.meta.url}`);
-console.error(`🔍 [DEBUG] process.argv[1]: ${process.argv[1]}`);
-console.error(`🔍 [DEBUG] process.argv[0]: ${process.argv[0]}`);
-
-// Enhanced main module detection for npx compatibility
-const isMain = import.meta.url === `file://${process.argv[1]}` || 
-               process.argv[1].includes('puppeteer-real-browser-mcp-server') ||
-               process.argv[1].endsWith('.bin/puppeteer-real-browser-mcp-server') ||
-               process.argv.some(arg => arg.includes('puppeteer-real-browser-mcp-server'));
-
-console.error(`🔍 [DEBUG] Enhanced main detection result: ${isMain}`);
-
-if (isMain) {
-  console.error('🔍 [DEBUG] Module is main - starting server...');
-  main().catch((error) => {
-    console.error(`🔍 [DEBUG] Main function failed at ${new Date().toISOString()}`);
-    console.error('❌ Failed to start server:', error);
-    console.error(`🔍 [DEBUG] Error stack:`, error.stack);
-    process.exit(1);
-  });
-} else {
-  console.error('🔍 [DEBUG] Module is not main - not starting server');
-  console.error('🔍 [DEBUG] FORCE STARTING - This is likely an npx execution');
-  main().catch((error) => {
-    console.error(`🔍 [DEBUG] Forced main function failed at ${new Date().toISOString()}`);
-    console.error('❌ Failed to start server:', error);
-    console.error(`🔍 [DEBUG] Error stack:`, error.stack);
-    process.exit(1);
-  });
-}

@@ -3,7 +3,7 @@
 
 # Puppeteer Real Browser MCP Server
 
-Provides AI assistants with powerful, detection-resistant browser automation capabilities built on ZFC Digital's puppeteer-real-browser package.
+Provides AI assistants with browser automation through MCP. Version 1.6.0 uses an internal, ownership-safe launcher built with `chrome-launcher`, `rebrowser-puppeteer-core`, and `ghost-cursor`.
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
@@ -104,8 +104,9 @@ Once set up, you can ask Claude to:
 ## Introduction
 
 The Puppeteer Real Browser MCP Server acts as a bridge between AI assistants
-and browser automation. It leverages puppeteer-real-browser to provide stealth
-browsing capabilities that can bypass common bot detection mechanisms.
+and browser automation. Its internal managed launcher adds common
+anti-detection behavior while keeping an exact handle to the Chrome process it
+starts.
 
 This server implements the Model Context Protocol (MCP), allowing AI
 assistants to control a real browser, extract content, and more.
@@ -115,14 +116,15 @@ assistants to control a real browser, extract content, and more.
 - **Stealth by default**: All browser instances use anti-detection features
 - **Enhanced Windows support**: Comprehensive Chrome detection and ECONNREFUSED error fixes (v1.3.0)
 - **Smart Chrome detection**: Registry-based detection + 15+ installation paths (Windows)
-- **Connection resilience**: Automatic localhost/127.0.0.1 fallback with port management
-- **Multiple retry strategies**: 5 different connection approaches with progressive fallback
-- **Advanced configuration**: Full support for all puppeteer-real-browser options
+- **Safe process ownership**: Stops only the Chrome process started by this server
+- **Failure-safe startup**: Exact cleanup after launch, connection, timeout, or page-setup failures
+- **Clean MCP shutdown**: Handles stdin EOF, SIGINT, and SIGTERM without a permanent heartbeat
+- **Protected profiles**: Rejects personal Chrome profiles and unsafe debugging-port overrides
 - **Dynamic selector discovery**: Intelligent element finding without hardcoded selectors
 - **Random scrolling**: Tools for natural scrolling to avoid detection
 - **Comprehensive toolset**: 11 tools covering all browser automation needs
 - **Proxy support**: Built-in proxy configuration for enhanced privacy
-- **Captcha handling**: Support for solving reCAPTCHA, hCaptcha, and Turnstile
+- **Challenge assistance**: Detects and clicks common Cloudflare Turnstile widgets when possible
 - **Robust error handling**: Advanced error recovery with circuit breaker pattern
 - **Stack overflow protection**: Comprehensive protection against infinite recursion
 - **Timeout controls**: Automatic timeout mechanisms prevent hanging operations
@@ -501,7 +503,7 @@ AI: I'll set up the browser with your proxy configuration.
 
 | Tool Name | Description | Required Parameters | Optional Parameters |
 |-----------|-------------|---------------------|-------------------|
-| `browser_init` | Initialize stealth browser with advanced options | None | `headless`, `disableXvfb`, `ignoreAllFlags`, `proxy`, `plugins`, `connectOption` |
+| `browser_init` | Initialize stealth browser with advanced options | None | `headless`, `disableXvfb`, `proxy`, `profilePath`, `connectOption` |
 | `navigate` | Navigate to a URL | `url` | `waitUntil` |
 | `get_content` | Get page content (HTML or text) | None | `type`, `selector` |
 | `browser_close` | Close the browser instance | None | None |
@@ -580,8 +582,8 @@ The server includes basic support for solving common captcha types:
 - hCaptcha
 - Cloudflare Turnstile
 
-Note that captcha solving capabilities depend on the underlying
-puppeteer-real-browser implementation.
+This is best-effort interaction assistance, not a promise that every challenge
+can be solved.
 
 ## Configuration
 
@@ -632,14 +634,31 @@ When initializing with `browser_init`, you can configure:
 
 - `headless`: true/false (Set to true for headless operation)
 - `disableXvfb`: true/false (Disable X Virtual Framebuffer)
-- `ignoreAllFlags`: true/false (Ignore all Chrome flags)
 - `proxy`: "https://proxy:8080" (Proxy server URL)
-- `plugins`: ["plugin1", "plugin2"] (Array of plugins to load)
+- `profilePath`: Absolute path to a dedicated automation profile. A new or empty directory receives an ownership marker.
 - `connectOption`: Additional connection options like:
   - `slowMo`: 250 (Slow down operations by milliseconds)
   - `timeout`: 60,000 (Connection timeout)
 
 The MCP config file only tells Claude where to find the server - all browser-specific options are configured through your conversations with Claude.
+
+### Browser Ownership Safety
+
+The server owns one Chrome launcher handle. Normal close, startup failure,
+timeout, MCP disconnect, and signal shutdown all clean up through that exact
+handle. The server never searches for Chrome by process name and never closes
+your normal Chrome windows.
+
+For safety, these browser-init overrides are rejected:
+
+- `customConfig.userDataDir`
+- `customConfig.port`, `customConfig.portStrictMode`, or `customConfig.handleSIGINT`
+- `connectOption.browserURL`, `connectOption.browserWSEndpoint`, or a custom transport
+- Chrome flags for `--remote-debugging-port`, `--remote-debugging-pipe`, or `--user-data-dir`
+
+Use `profilePath` when you want a persistent automation profile. It must be an
+absolute path. A non-empty directory is accepted only when it contains the
+server's ownership marker.
 
 ### Browser Options Example
 
@@ -649,9 +668,7 @@ When initializing the browser with `browser_init`, you can configure:
 {
   "headless": false,
   "disableXvfb": false,
-  "ignoreAllFlags": false,
   "proxy": "https://proxy:8080",
-  "plugins": ["plugin1", "plugin2"],
   "connectOption": {
     "slowMo": 250,
     "timeout": 60000
@@ -682,7 +699,6 @@ When initializing the browser with `browser_init`, you can configure:
 ```json
 {
   "headless": false,
-  "ignoreAllFlags": true,
   "disableXvfb": false,
   "connectOption": {
     "slowMo": 100,
@@ -715,16 +731,14 @@ Version 1.3.0 includes comprehensive fixes for the `connect ECONNREFUSED 127.0.0
 - Environment variable support (`CHROME_PATH`, `PUPPETEER_EXECUTABLE_PATH`)
 
 **Windows-Specific Launch Optimizations:**
-- 20+ Windows-specific Chrome flags for better compatibility
-- Multiple fallback strategies (5 different connection approaches)
-- Progressive retry logic with exponential backoff
-- Enhanced timeout handling (120s for Windows vs 90s for other platforms)
+- Uses a longer connection timeout on Windows
+- Uses one system-assigned debugging port owned by the launcher
+- Cleans the exact launched process if connection fails
 
 **Connection Resilience Features:**
-- Localhost vs 127.0.0.1 fallback handling (fixes known Puppeteer issue)
-- Port availability checking and automatic port assignment
-- Network connectivity testing before browser launch
-- Enhanced error categorization and automatic fallback strategies
+- Direct connection to the owned launcher's loopback endpoint
+- System-assigned port, avoiding fixed-port collisions
+- Failure categorization and a bounded circuit breaker
 
 **If you're still experiencing ECONNREFUSED errors:**
 
@@ -750,10 +764,8 @@ Version 1.3.0 includes comprehensive fixes for the `connect ECONNREFUSED 127.0.0
    ```
 
 4. **Chrome Process Management:**
-   ```bash
-   # Kill existing Chrome processes
-   taskkill /f /im chrome.exe
-   ```
+   - Close only the automation browser through the `browser_close` tool.
+   - Never terminate Chrome by process name because that also closes normal user windows.
 
 ### Common Issues
 
@@ -1003,13 +1015,13 @@ A: Yes, set `headless: true` in browser_init options.
 A: Currently supports one browser instance. Close the current one before starting a new one.
 
 **Q: What captchas can it solve?**
-A: Supports reCAPTCHA, hCaptcha, and Cloudflare Turnstile through puppeteer-real-browser.
+A: It provides best-effort interaction with common Turnstile widgets. It does not guarantee that a captcha will be solved.
 
 **Q: Is this detectable by websites?**
-A: puppeteer-real-browser includes anti-detection features, but no solution is 100% undetectable.
+A: It includes anti-detection behavior, but no browser automation is 100% undetectable.
 
 **Q: Can I use custom Chrome extensions?**
-A: Yes, through the `plugins` option in browser_init.
+A: Advanced users can pass Chrome's `--load-extension` flag through `customConfig.chromeFlags`. Use only extensions you trust.
 
 **Q: Does it work on all operating systems?**
 A: Yes, tested on Windows, macOS, and Linux. The server automatically detects Chrome installations on all platforms.
@@ -1053,7 +1065,7 @@ The server also implements multiple connection strategies with automatic fallbac
 **Q: I'm still getting ECONNREFUSED errors after upgrading to v1.3.0. What should I do?**
 A: Try these steps in order:
 1. Set the `CHROME_PATH` environment variable to your Chrome location
-2. Kill all existing Chrome processes: `taskkill /f /im chrome.exe`
+2. Close the automation browser with `browser_close`, then retry initialization
 3. Check your Windows hosts file contains: `127.0.0.1 localhost`
 4. Try running your IDE as Administrator
 5. Add Chrome to Windows Defender exclusions
@@ -1197,9 +1209,11 @@ This project is licensed under the MIT License - see the LICENSE file for detail
 
 ## Acknowledgments
 
-This MCP server is based on the excellent [puppeteer-real-browser](https://github.com/ZFC-Digital/puppeteer-real-browser) library by ZFC-Digital.
-
-**Thank you** to the puppeteer-real-browser team for creating such a powerful and detection-resistant browser automation solution!
+The original implementation and public API were based on
+[puppeteer-real-browser](https://github.com/ZFC-Digital/puppeteer-real-browser)
+by ZFC Digital. Version 1.6.0 replaces that end-of-life runtime dependency with
+an internal managed launcher so the server can prove which Chrome process it
+owns and closes.
 
 - GitHub: [https://github.com/ZFC-Digital/puppeteer-real-browser](https://github.com/ZFC-Digital/puppeteer-real-browser)
 - npm: [https://www.npmjs.com/package/puppeteer-real-browser](https://www.npmjs.com/package/puppeteer-real-browser)

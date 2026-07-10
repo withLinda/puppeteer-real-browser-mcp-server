@@ -3,7 +3,7 @@
 // Server metadata
 export const SERVER_INFO = {
   name: 'puppeteer-real-browser-mcp-server',
-  version: '1.4.0',
+  version: '1.6.0',
 };
 
 // MCP capabilities
@@ -53,21 +53,13 @@ export const TOOLS = [
           description: 'Disable Xvfb (X Virtual Framebuffer)',
           default: false,
         },
-        ignoreAllFlags: {
-          type: 'boolean',
-          description: 'Ignore all Chrome flags (recommended: true for clean startup without --no-sandbox)',
-          default: true,
-        },
         proxy: {
           type: 'string',
           description: 'Proxy server URL (format: protocol://host:port)',
         },
-        plugins: {
-          type: 'array',
-          description: 'Array of plugins to load',
-          items: {
-            type: 'string',
-          },
+        profilePath: {
+          type: 'string',
+          description: 'Absolute path to a dedicated automation profile. New or empty directories receive an MCP ownership marker; personal Chrome profiles are rejected.',
         },
         connectOption: {
           type: 'object',
@@ -338,9 +330,8 @@ export const TOOL_NAMES = {
 export interface BrowserInitArgs {
   headless?: boolean;
   disableXvfb?: boolean;
-  ignoreAllFlags?: boolean;
   proxy?: string;
-  plugins?: string[];
+  profilePath?: string;
   connectOption?: any;
   customConfig?: {
     chromePath?: string;

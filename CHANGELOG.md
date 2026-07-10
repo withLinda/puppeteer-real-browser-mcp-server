@@ -5,6 +5,32 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.6.0] - 2026-07-10
+
+### Security and safety
+
+- Removed every system-wide Chrome termination command.
+- Added a repository guard that rejects process-name-based Chrome cleanup.
+- Added exact Chrome ownership through a direct `chrome-launcher` handle.
+- Rejects external debugging endpoints, manual debugging ports, and unowned user-data directories.
+- Added ownership markers for persistent automation profiles.
+
+### Changed
+
+- Replaced the end-of-life `puppeteer-real-browser` runtime dependency with a managed TypeScript adapter using `chrome-launcher`, `rebrowser-puppeteer-core`, and `ghost-cursor`.
+- Replaced duplicate port and connection fallback strategies with one owned launch path.
+- Added coordinated stdin EOF, SIGINT, SIGTERM, startup-failure, and fatal-error cleanup.
+- Removed the permanent heartbeat timer.
+- Made the package lockfile part of the release source and pinned direct dependencies.
+- Build output now excludes test files and includes declarations and source maps.
+
+### Tests
+
+- Added failure-path tests for launch, connection, timeout, late connection, and page preparation.
+- Added concurrent launch and idempotent close tests.
+- Added a real Chrome acceptance test proving that an unrelated Chrome-named process stays alive.
+- Package smoke testing now verifies MCP initialization, tool listing, tarball contents, and clean stdin-EOF shutdown.
+
 ## [1.5.12] - 2025-07-06
 
 ### Maintenance

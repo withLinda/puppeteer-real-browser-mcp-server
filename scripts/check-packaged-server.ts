@@ -1,5 +1,5 @@
 import { spawn } from 'child_process';
-import { access, mkdtemp, mkdir, readFile, rm, symlink } from 'fs/promises';
+import { access, mkdtemp, mkdir, readFile, readdir, rm, symlink } from 'fs/promises';
 import { tmpdir } from 'os';
 import { dirname, join, resolve } from 'path';
 import { fileURLToPath } from 'url';
@@ -28,6 +28,22 @@ interface JsonRpcResponse {
     message: string;
     data?: unknown;
   };
+}
+
+async function listFilesRecursively(directory: string, prefix = ''): Promise<string[]> {
+  const entries = await readdir(directory, { withFileTypes: true });
+  const files: string[] = [];
+
+  for (const entry of entries) {
+    const relativePath = join(prefix, entry.name);
+    if (entry.isDirectory()) {
+      files.push(...await listFilesRecursively(join(directory, entry.name), relativePath));
+    } else if (entry.isFile()) {
+      files.push(relativePath);
+    }
+  }
+
+  return files;
 }
 
 type PendingRequest = {
@@ -136,7 +152,25 @@ async function assertPackedEntrypoint(packageRoot: string): Promise<string> {
     );
   }
 
-  console.log('Packed dist/index.js uses the correct lowercase MCP SDK import.');
+  const packageManifest = JSON.parse(
+    await readFile(join(packageRoot, 'package.json'), 'utf8'),
+  ) as { dependencies?: Record<string, string> };
+  if (packageManifest.dependencies?.['puppeteer-real-browser']) {
+    throw new Error('Packed package still depends on the end-of-life puppeteer-real-browser package.');
+  }
+
+  await access(join(packageRoot, 'LICENSE'));
+  await access(join(packageRoot, 'THIRD_PARTY_NOTICES.md'));
+
+  const distFiles = await listFilesRecursively(join(packageRoot, 'dist'));
+  const packedTestFile = distFiles.find(
+    (file) => /\.(?:test|spec)\.(?:js|d\.ts|js\.map)$/.test(file),
+  );
+  if (packedTestFile) {
+    throw new Error(`Packed dist contains a test artifact: ${packedTestFile}`);
+  }
+
+  console.log('Packed runtime, metadata, notices, and dependency boundary are valid.');
   return packagedEntrypoint;
 }
 
@@ -160,17 +194,30 @@ async function stopServer(child: ReturnType<typeof spawn>): Promise<void> {
     return;
   }
 
-  await new Promise<void>((resolveStop) => {
-    const forceKillTimer = setTimeout(() => {
-      child.kill('SIGKILL');
+  await new Promise<void>((resolveStop, rejectStop) => {
+    let fallbackSignalUsed = false;
+    const sigtermTimer = setTimeout(() => {
+      fallbackSignalUsed = true;
+      child.kill('SIGTERM');
     }, 3000);
+    const forceExitTimer = setTimeout(() => {
+      fallbackSignalUsed = true;
+      child.kill('SIGKILL');
+    }, 5000);
 
-    child.once('exit', () => {
-      clearTimeout(forceKillTimer);
+    child.once('exit', (code, signal) => {
+      clearTimeout(sigtermTimer);
+      clearTimeout(forceExitTimer);
+      if (fallbackSignalUsed) {
+        rejectStop(
+          new Error(`Packaged server did not stop cleanly after stdin EOF (code: ${code}, signal: ${signal}).`),
+        );
+        return;
+      }
       resolveStop();
     });
 
-    child.kill('SIGTERM');
+    child.stdin.end();
   });
 }
 

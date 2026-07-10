@@ -191,43 +191,6 @@ export function handleToolResponse<T>(
   );
 }
 
-// MCP server configuration constants
-export const MCP_SERVER_CONFIG = {
-  name: 'puppeteer-real-browser-mcp-server',
-  version: '1.4.0',
-  capabilities: {
-    tools: {},
-    resources: {},
-    prompts: {},
-  },
-} as const;
-
-// Process cleanup utilities
-export function setupProcessCleanup(cleanupCallback: () => Promise<void>): void {
-  // Handle process termination gracefully
-  const cleanup = async () => {
-    console.error('🧹 Cleaning up before exit...');
-    try {
-      await cleanupCallback();
-      console.error('✅ Cleanup completed');
-    } catch (error) {
-      console.error('❌ Error during cleanup:', error);
-    }
-    process.exit(0);
-  };
-
-  process.on('SIGINT', cleanup);
-  process.on('SIGTERM', cleanup);
-  process.on('uncaughtException', async (error) => {
-    console.error('❌ Uncaught exception:', error);
-    await cleanup();
-  });
-  process.on('unhandledRejection', async (reason) => {
-    console.error('❌ Unhandled rejection:', reason);
-    await cleanup();
-  });
-}
-
 // Type definitions for tool execution
 export interface ToolExecutionContext {
   toolName: string;

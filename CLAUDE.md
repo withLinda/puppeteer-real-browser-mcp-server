@@ -290,35 +290,11 @@ After analyzing the complete commit history, these are the **TOP 5 RECURRING MIS
 
 ---
 
-### ❌ **MISTAKE #1: Double Browser Launch Configuration**
-**OCCURS:** Every few months | **LAST:** July 4, 2025 & June 27, 2025
+### ❌ **MISTAKE #1: System-Wide Browser Cleanup**
 
-#### The Problem Pattern:
-```typescript
-// ❌ WRONG (causes double browser launch):
-const chromeConfig = {
-  ignoreDefaultFlags: true  // Creates TWO browsers: NOT-REAL + REAL
-};
-```
+Never terminate Chrome by executable name or command-line text. The server must retain the exact launcher handle for every attempt and close only that owned process tree. Failed and timed-out attempts must be disposed before another attempt starts.
 
-#### ✅ MANDATORY Prevention Rule:
-```typescript
-// ✅ ALWAYS USE THIS PATTERN:
-const chromeConfig = {
-  ignoreDefaultFlags: false,  // CRITICAL: Must be false
-  chromeFlags: [
-    '--no-first-run',
-    '--no-default-browser-check', 
-    '--disable-default-apps',
-    '--start-maximized',
-    '--disable-blink-features=AutomationControlled'
-  ]
-};
-```
-
-**WHY IT HAPPENS:** `ignoreDefaultFlags: true` forces chrome-launcher to create a fallback browser instance, while puppeteer-real-browser creates its own → TWO BROWSERS
-
-**PREVENTION RULE:** ALWAYS search codebase for ALL instances of `ignoreDefaultFlags` and ensure they're ALL set to `false`. Check fallback strategies too!
+`ignoreDefaultFlags` controls Chrome flags only. It does not create another browser. Keep its value intentional and cover the chosen flags with tests.
 
 ---
 
@@ -457,9 +433,9 @@ const module = await import('module-name');
 Before EVERY commit, Claude Code MUST verify:
 
 ### Browser Configuration:
-- [ ] `ignoreDefaultFlags: false` in ALL browser configurations
+- [ ] Every browser attempt retains an exact launcher handle until cleanup finishes
+- [ ] No process-name-based browser termination exists in code, tests, scripts, or docs
 - [ ] Chrome flags include `--no-first-run`, `--no-default-browser-check`, `--disable-default-apps`
-- [ ] Search codebase: `grep -r "ignoreDefaultFlags" . --include="*.ts"`
 
 ### Recursion Prevention:
 - [ ] ALL retry functions have explicit depth parameters
@@ -486,8 +462,8 @@ Before EVERY commit, Claude Code MUST verify:
 Use these commands to detect recurring patterns:
 
 ```bash
-# Check for double browser patterns:
-grep -r "ignoreDefaultFlags" . --include="*.ts"
+# Check browser ownership and cleanup paths:
+rg "Launcher|closeBrowser|emergencyClose" src test
 
 # Check for infinite recursion risks:
 grep -r "withRetry\|retry" . --include="*.ts" | grep -v "depth\|maxRetry"
@@ -534,25 +510,21 @@ When running tests for the puppeteer-real-browser MCP server:
    ps aux | grep -i chrome | grep -v grep | wc -l
    ```
 
-2. **Clean up zombie processes before starting tests:**
-   ```bash
-   pkill -f "Google Chrome" && pkill -f "chrome"
-   ```
-
-3. **After completing tests, verify cleanup:**
+2. **After completing tests, verify owned-process cleanup:**
    ```bash
    ps aux | grep -i chrome | grep -v grep | wc -l
    ```
-   - Should return 0 or very few processes
+   - Do not expect zero because normal user Chrome may be running.
+   - Tests must record their own launcher PID and verify only that PID exits.
 
 ### Complete TDD Test Execution Order
-1. Clean zombie Chrome processes first
+1. Run `npm run test:safety` before the normal suite
 2. Start TDD watch mode: `npm run test:watch`
 3. Follow Red-Green-Refactor cycles
 4. Build and test distribution: `npm run build && npm run test:dist`
 5. Commit only when all tests pass
 6. Before publishing: `npm run test:all`
-7. Verify no zombie processes remain
+7. Verify every test-owned launcher PID has exited
 
 ### Why TDD Matters for MCP Servers
 - **Better Design**: TDD forces you to think about MCP server interface before implementation

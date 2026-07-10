@@ -4,7 +4,6 @@ import { describe, expect, it } from 'vitest';
 
 const BUILD_ENTRYPOINTS = [
   new URL('./index.ts', import.meta.url),
-  new URL('./index-original.ts', import.meta.url),
 ];
 
 const WRONG_CASE_IMPORT_PREFIX = '@modelContextProtocol/';
