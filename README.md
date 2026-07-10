@@ -1,1219 +1,471 @@
-
-⚠️ **UNDER MAINTENANCE** - This project is still being actively developed. Some features may be incomplete or change without notice.
-
 # Puppeteer Real Browser MCP Server
 
-Provides AI assistants with browser automation through MCP. Version 1.6.0 uses an internal, ownership-safe launcher built with `chrome-launcher`, `rebrowser-puppeteer-core`, and `ghost-cursor`.
+[![npm version](https://img.shields.io/npm/v/puppeteer-real-browser-mcp-server.svg)](https://www.npmjs.com/package/puppeteer-real-browser-mcp-server)
+[![Node.js](https://img.shields.io/badge/Node.js-%3E%3D18-43853d.svg)](./package.json)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](./LICENSE)
 
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+Give an MCP-compatible AI assistant a local Chrome browser that it can open,
+navigate, read, and control.
 
-## Table of Contents
+> **Under maintenance:** This project is still changing. The `main` branch may
+> be newer than the package published on npm. The npm badge above shows the
+> published version used by `@latest`.
 
-1. [Quick Start for Beginners](#quick-start-for-beginners)
-2. [Introduction](#introduction)
-3. [Features](#features)
-4. [Prerequisites](#prerequisites)
-5. [Installation](#installation)
-6. [Usage](#usage)
-   - [With Claude Desktop](#with-claude-desktop)
-   - [With Claude Code CLI](#with-claude-code-cli)
-   - [With Cursor IDE](#with-cursor-ide)
-   - [With Other AI Assistants](#with-other-ai-assistants)
-7. [Available Tools](#available-tools)
-8. [Advanced Features](#advanced-features)
-9. [Configuration](#configuration)
-10. [Troubleshooting](#troubleshooting)
-11. [Development](#development)
-12. [Testing](#testing)
-13. [Contributing](#contributing)
-14. [License](#license)
+## What it does
 
-## Quick Start for Beginners
+This package runs as a local [Model Context Protocol (MCP)](https://modelcontextprotocol.io/)
+server. Your MCP client starts the server, and the server starts one Chrome
+process for browser automation.
 
-### What is this?
-This is an MCP (Model Context Protocol) server that lets AI assistants like Claude control a real web browser. Think of it as giving Claude "hands" to interact with websites - it can click buttons, fill forms, extract content, and much more, all while avoiding bot detection.
+Main features:
 
-### Important: You DON'T Need to Install This Package!
-If you're just using this MCP server (not developing it), you don't need to run `npm install`. The `npx` command in the configuration will automatically download and run the latest version for you. Installation is only required for development purposes.
+- Opens a visible browser by default, with optional headless mode
+- Navigates pages and reads HTML or text
+- Finds elements, clicks, types, waits, and scrolls
+- Uses `rebrowser-puppeteer-core` and a small set of anti-detection settings
+- Detects Chrome on Windows, macOS, and Linux
+- Supports a custom Chrome path, proxy, and dedicated automation profile
+- Tracks the exact Chrome process it starts and closes only that process
+- Enforces a content-first workflow before page interaction
 
-### Step-by-Step Setup
+No browser automation is invisible. Websites may still detect it or block it.
 
-#### 1. Install Node.js (Required)
-- Go to [nodejs.org](https://nodejs.org/)
-- Download and install Node.js (version 18 or higher)
-- Verify installation by opening terminal/command prompt and typing: `node --version`
+## Safety and current limits
 
-#### 2. Configure Claude Desktop
+Please read this before using the server:
 
-**For Windows:**
-1. Open File Explorer and navigate to: `%APPDATA%\Claude\`
-2. Open (or create) `claude_desktop_config.json`
-3. Add this configuration:
+- Use it only on websites you are allowed to automate.
+- Review tool calls before approving logins, forms, purchases, downloads, or
+  other sensitive actions.
+- The browser and file tools run with your normal user permissions.
+- The server supports one browser session at a time.
+- `solve_captcha` is currently a placeholder. It does not use a CAPTCHA-solving
+  service. Browser startup only makes a best-effort click on detected Turnstile
+  widgets.
+- `save_content_as_markdown` is listed by the server, but the current workflow
+  validator blocks it. This is a known code issue.
 
-```json
-{
-  "mcpServers": {
-    "puppeteer-real-browser": {
-      "command": "npx",
-      "args": ["puppeteer-real-browser-mcp-server@latest"]
-    }
-  }
-}
-```
+## Requirements
 
-**For Mac:**
-1. Open Finder and press `Cmd+Shift+G`
-2. Go to: `~/Library/Application Support/Claude/`
-3. Open (or create) `claude_desktop_config.json`
-4. Add the same configuration as above
+- [Node.js](https://nodejs.org/) 18 or newer
+- npm and `npx` (included with the normal Node.js installer)
+- Google Chrome or Chromium
+- An MCP client that can start a local `stdio` server
 
-**For Linux:**
-1. Navigate to: `~/.config/Claude/`
-2. Open (or create) `claude_desktop_config.json`
-3. Add the same configuration as above
+Claude Desktop is available on macOS and Windows. Other MCP clients can use
+this server on Linux.
 
-**Why @latest?** The `@latest` tag ensures you always get the most recent version with bug fixes and improvements. The `npx` command automatically downloads and runs it without installing anything permanently on your system.
+## Quick start
 
-#### 3. Restart Claude Desktop
-Close and reopen Claude Desktop completely.
+You do not need to install this package globally. `npx` can download and run
+the published package when your MCP client needs it.
 
-#### 4. Test It Works
-In Claude Desktop, try saying:
-> "Initialize a browser and navigate to google.com, then get the page content"
+The `-y` option prevents an npm install question from blocking the MCP server
+while it starts.
 
-If everything is working, Claude should be able to:
-- Start a browser
-- Navigate to Google
-- Extract and show you the page content
+### Claude Desktop
 
-### What Can You Do With It?
-
-Once set up, you can ask Claude to:
-- **Browse websites**: "Go to amazon.com and search for laptops"
-- **Fill forms**: "Fill out this contact form with my details"
-- **Extract data**: "Get all the product prices from this page"
-- **Automate tasks**: "Log into my account and download my invoice"
-- **Solve captchas**: "Handle any captchas that appear"
-
-### Safety Notes
-- Claude will show you what it's doing - you can see the browser window
-- Always review what Claude does before approving sensitive actions
-- Use headless mode (`headless: true`) if you don't want to see the browser window
-- Be respectful of websites' terms of service
-
-## Introduction
-
-The Puppeteer Real Browser MCP Server acts as a bridge between AI assistants
-and browser automation. Its internal managed launcher adds common
-anti-detection behavior while keeping an exact handle to the Chrome process it
-starts.
-
-This server implements the Model Context Protocol (MCP), allowing AI
-assistants to control a real browser, extract content, and more.
-
-## Features
-
-- **Stealth by default**: All browser instances use anti-detection features
-- **Enhanced Windows support**: Comprehensive Chrome detection and ECONNREFUSED error fixes (v1.3.0)
-- **Smart Chrome detection**: Registry-based detection + 15+ installation paths (Windows)
-- **Safe process ownership**: Stops only the Chrome process started by this server
-- **Failure-safe startup**: Exact cleanup after launch, connection, timeout, or page-setup failures
-- **Clean MCP shutdown**: Handles stdin EOF, SIGINT, and SIGTERM without a permanent heartbeat
-- **Protected profiles**: Rejects personal Chrome profiles and unsafe debugging-port overrides
-- **Dynamic selector discovery**: Intelligent element finding without hardcoded selectors
-- **Random scrolling**: Tools for natural scrolling to avoid detection
-- **Comprehensive toolset**: 11 tools covering all browser automation needs
-- **Proxy support**: Built-in proxy configuration for enhanced privacy
-- **Challenge assistance**: Detects and clicks common Cloudflare Turnstile widgets when possible
-- **Robust error handling**: Advanced error recovery with circuit breaker pattern
-- **Stack overflow protection**: Comprehensive protection against infinite recursion
-- **Timeout controls**: Automatic timeout mechanisms prevent hanging operations
-- **Platform optimization**: Windows-specific flags and longer timeouts for better compatibility
-
-## Prerequisites
-
-- Node.js >= 18.0.0
-- npm or yarn
-- Google Chrome or Chromium browser installed
-- Basic understanding of TypeScript/JavaScript (for development)
-
-### Platform-Specific Requirements
-
-**Windows:**
-- Google Chrome installation (automatic detection in v1.3.0+ includes):
-  - Standard installations: `C:\Program Files\Google\Chrome\Application\chrome.exe`
-  - 32-bit installations: `C:\Program Files (x86)\Google\Chrome\Application\chrome.exe`
-  - User installations: `%LOCALAPPDATA%\Google\Chrome\Application\chrome.exe`
-  - Chrome Canary: `%LOCALAPPDATA%\Google\Chrome SxS\Application\chrome.exe`
-  - Portable installations and Registry-detected paths
-  - Manual path specification: Use `CHROME_PATH` environment variable
-
-**macOS:**
-- Google Chrome or Chromium must be installed in `/Applications/`
-
-**Linux:**
-- Install Chrome/Chromium: `sudo apt-get install -y google-chrome-stable` or `sudo apt-get install -y chromium-browser`
-- Install xvfb for headless operation: `sudo apt-get install -y xvfb`
-
-## Installation for Developers
-
-> **Note for Claude Desktop Users:** You don't need to install anything! The npx command in your configuration automatically handles everything. Skip to the [Usage](#usage) section.
-
-This section is for developers who want to:
-- Contribute to the project
-- Run the server locally for development
-- Create custom modifications
-
-### Global Installation (For Command Line Usage)
-
-If you want to run the server directly from the command line without using npx:
-
-```bash
-npm install -g puppeteer-real-browser-mcp-server@latest
-```
-
-After global installation, you can run:
-```bash
-puppeteer-real-browser-mcp-server
-```
-
-### Development Setup (For Contributors)
-
-```bash
-# Clone the repository
-git clone https://github.com/withLinda/puppeteer-real-browser-mcp-server.git
-cd puppeteer-real-browser-mcp-server
-
-# Install dependencies
-npm install
-
-# Build the project
-npm run build
-
-# Run in development mode
-npm run dev
-```
-
-## Usage
-
-### With Claude Desktop
-
-The configuration below uses `npx` to automatically download and run the latest version. No installation required!
+1. Open **Claude Desktop → Settings → Developer → Edit Config**.
+2. Add this server inside `mcpServers`:
 
 ```json
 {
   "mcpServers": {
     "puppeteer-real-browser": {
       "command": "npx",
-      "args": ["puppeteer-real-browser-mcp-server@latest"]
+      "args": [
+        "-y",
+        "puppeteer-real-browser-mcp-server@latest"
+      ]
     }
   }
 }
 ```
 
-> **What does npx do?** The `npx` command downloads and runs the package without permanently installing it. The `@latest` ensures you always get the newest version with all bug fixes and improvements.
+1. Save the file.
+2. Fully quit Claude Desktop, then open it again.
 
-### With Claude Code CLI
+Claude Desktop stores this file here:
 
-Claude Code CLI offers multiple convenient methods to add the puppeteer-real-browser MCP server. Choose the method that best fits your workflow:
+- macOS: `~/Library/Application Support/Claude/claude_desktop_config.json`
+- Windows: `%APPDATA%\Claude\claude_desktop_config.json`
 
-#### Method 1: Quick Setup (Recommended)
+See the official [local MCP server guide](https://modelcontextprotocol.io/docs/develop/connect-local-servers)
+for the current Claude Desktop steps.
 
-The fastest way to get started is using the `claude mcp add` command:
+### Claude Code
 
-```bash
-claude mcp add puppeteer-real-browser -- npx puppeteer-real-browser-mcp-server@latest
-```
-
-This command:
-- Adds the server to your local scope (available only to you in current project)
-- Uses npx to automatically download and run the latest version
-- No installation required - everything is handled automatically
-
-#### Method 2: Add with Environment Variables
-
-If you need to configure proxy settings or custom Chrome paths:
+Run:
 
 ```bash
-claude mcp add puppeteer-real-browser \
-  -e CHROME_PATH="/path/to/chrome" \
-  -e PROXY_URL="http://proxy:8080" \
-  -- npx puppeteer-real-browser-mcp-server@latest
+claude mcp add --transport stdio puppeteer-real-browser \
+  -- npx -y puppeteer-real-browser-mcp-server@latest
 ```
 
-#### Method 3: Scoped Configuration
-
-**For User-Wide Access (Available Across All Projects):**
-```bash
-claude mcp add puppeteer-real-browser -s user -- npx puppeteer-real-browser-mcp-server@latest
-```
-
-**For Project-Wide Access (Shared with Team via .mcp.json):**
-```bash
-claude mcp add puppeteer-real-browser -s project -- npx puppeteer-real-browser-mcp-server@latest
-```
-
-#### Method 4: JSON Configuration
-
-For advanced users who want precise control:
+Then check the connection:
 
 ```bash
-claude mcp add-json puppeteer-real-browser '{
-  "type": "stdio",
-  "command": "npx",
-  "args": ["puppeteer-real-browser-mcp-server@latest"],
-  "env": {
-    "CHROME_PATH": "/path/to/chrome",
-    "PROXY_URL": "http://proxy:8080"
-  }
-}'
+claude mcp get puppeteer-real-browser
 ```
 
-#### Verification and Testing
+Inside Claude Code, `/mcp` also shows server status.
 
-After adding the server:
+The default scope is local to the current project. Add `--scope user` before
+the server name if you want the server in all your projects. See the official
+[Claude Code MCP guide](https://code.claude.com/docs/en/mcp) for scope details.
 
-1. **Check MCP Server Status:**
-   ```bash
-   /mcp
-   ```
-   This command in Claude Code shows all active MCP servers.
+### Cursor
 
-2. **Test the Server:**
-   In Claude Code, try:
-   > "Initialize a browser and navigate to google.com, then get the page content"
+Create `.cursor/mcp.json` in one project, or `~/.cursor/mcp.json` for all
+projects:
 
-   If working correctly, you should see:
-   - Browser initialization
-   - Navigation to Google
-   - Page content extracted and displayed
-
-#### Configuration Scopes Explained
-
-| Scope | Description | Config Location | Use Case |
-|-------|-------------|----------------|----------|
-| **local** (default) | Available only to you in current project | `.mcp.json` in project | Testing, project-specific |
-| **project** | Shared with entire team | `.mcp.json` committed to repo | Team collaboration |
-| **user** | Available to you across all projects | User config directory | Personal productivity |
-
-#### Benefits of Claude Code CLI
-
-- **Automatic Updates**: Using `@latest` ensures you get bug fixes and improvements
-- **No Installation**: npx handles downloading and running automatically  
-- **Environment Variables**: Easy configuration of proxies, Chrome paths, etc.
-- **Scope Control**: Choose where the server is available (local/project/user)
-- **Team Sharing**: Project scope allows sharing configurations with teammates
-- **Status Monitoring**: Built-in `/mcp` command for server health checks
-
-### With Cursor IDE
-
-Cursor IDE uses the same npx approach - no installation needed! Here are the setup methods:
-
-#### Method 1: One-Click Installation (Recommended)
-
-1. **Open Cursor IDE**
-2. **Open Command Palette** (`Ctrl+Shift+P` on Windows/Linux, `Cmd+Shift+P` on Mac)
-3. **Search for "Cursor Settings"** and select it
-4. **Click on "MCP" in the sidebar**
-5. **Browse curated MCP servers** and install browser automation tools with one-click
-6. **OAuth authentication** will be handled automatically
-
-#### Method 2: Manual Configuration
-
-**Configuration File Location:**
-- **Project-specific**: Create `.cursor/mcp.json` in your project directory
-- **Global**: Create `~/.cursor/mcp.json` in your home directory
-
-**Basic Configuration (No Installation Required):**
 ```json
 {
   "mcpServers": {
     "puppeteer-real-browser": {
       "command": "npx",
-      "args": ["puppeteer-real-browser-mcp-server@latest"]
+      "args": [
+        "-y",
+        "puppeteer-real-browser-mcp-server@latest"
+      ]
     }
   }
 }
 ```
 
-> **Important:** Just like Claude Desktop, Cursor will use `npx` to automatically download and run the server. You don't need to install anything with npm!
+Restart Cursor after saving the file. See the official
+[Cursor MCP guide](https://docs.cursor.com/context/model-context-protocol) for
+current configuration locations and formats.
 
-**Windows-Specific Configuration (if experiencing Chrome path issues):**
-```json
-{
-  "mcpServers": {
-    "puppeteer-real-browser": {
-      "command": "npx",
-      "args": ["puppeteer-real-browser-mcp-server@latest"],
-      "env": {
-        "CHROME_PATH": "C:/Program Files/Google/Chrome/Application/chrome.exe"
-      }
-    }
-  }
-}
-```
+### Other MCP clients
 
-> **Note**: Browser options like headless mode should be configured when initializing the browser through the `browser_init` tool, not via environment variables.
+Use a local `stdio` server with this command and argument list:
 
-**Advanced Configuration with Custom Chrome Path:**
-```json
-{
-  "mcpServers": {
-    "puppeteer-real-browser": {
-      "command": "npx",
-      "args": ["puppeteer-real-browser-mcp-server@latest"],
-      "env": {
-        "CHROME_PATH": "C:/Program Files/Google/Chrome/Application/chrome.exe"
-      }
-    }
-  }
-}
-```
-
-> **Note**: Proxy settings and browser options should be configured when asking Claude to initialize the browser using the `browser_init` tool.
-
-#### Platform-Specific Chrome Paths for Cursor IDE
-
-If Chrome auto-detection fails, you can specify the Chrome path using the `CHROME_PATH` environment variable:
-
-**Windows:**
-```json
-"env": {
-  "CHROME_PATH": "C:/Program Files/Google/Chrome/Application/chrome.exe"
-}
-```
-Alternative Windows paths:
-- `"C:/Program Files (x86)/Google/Chrome/Application/chrome.exe"`
-- `"%LOCALAPPDATA%/Google/Chrome/Application/chrome.exe"`
-
-**macOS:**
-```json
-"env": {
-  "CHROME_PATH": "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"
-}
-```
-
-**Linux:**
-```json
-"env": {
-  "CHROME_PATH": "/usr/bin/google-chrome"
-}
-```
-Alternative Linux paths: `/usr/bin/chromium-browser`, `/snap/bin/chromium`
-
-
-#### Testing Cursor IDE Setup
-
-After configuration:
-1. **Restart Cursor IDE completely**
-2. **Open a new chat** 
-3. **Test with**: "Initialize a browser and navigate to google.com, then get the page content"
-
-If successful, you should see:
-- Browser window opening
-- Navigation to Google
-- Page content extracted and displayed in the chat
-
-#### Cursor IDE Troubleshooting
-
-**Common Issues:**
-
-1. **"MCP server not found"**
-   - Verify config file location and JSON syntax
-   - Use [jsonlint.com](https://jsonlint.com/) to validate JSON
-   - Ensure Node.js 18+ is installed
-
-2. **"Browser failed to launch" on Windows**
-   - Add explicit Chrome path in `executablePath`
-   - Try running Cursor IDE as Administrator
-   - Check Windows Defender isn't blocking Chrome
-
-3. **"Permission denied"**
-   - Use `sudo npm install -g puppeteer-real-browser-mcp-server` on Linux/Mac
-   - Run Command Prompt as Administrator on Windows
-
-4. **Configuration not loading**
-   - Ensure file is named exactly `mcp.json` (not `mcp.json.txt`)
-   - Check file is in correct directory
-   - Restart Cursor IDE after changes
-
-### With Other AI Assistants
-
-Start the server:
-
-```bash
-puppeteer-real-browser-mcp-server
-```
-
-Or if installed from source:
-
-```bash
-npm start
-```
-
-The server communicates via stdin/stdout using the MCP protocol.
-
-### Example Interactions
-
-#### Basic Web Browsing
 ```text
-User: "Initialize a browser and navigate to example.com"
-AI: I'll initialize a stealth browser and navigate to the website.
-[Uses browser_init and navigate tools]
-
+command: npx
+args: -y puppeteer-real-browser-mcp-server@latest
 ```
 
-#### Form Automation
+The server communicates through standard input and standard output. Your MCP
+client must keep the process open while it uses the tools.
+
+### Test the setup
+
+Ask your AI assistant:
+
+> Start the browser, open <https://example.com>, read the page text, and then
+> close the browser.
+
+The expected tool order is:
+
 ```text
-User: "Fill in the search form with 'test query'"
-AI: I'll type that into the search field.
-[Uses type tool with selector and text]
-
-User: "Click the search button"
-AI: I'll click the search button.
-[Uses click tool]
+browser_init → navigate → get_content → browser_close
 ```
 
-#### Data Extraction
+## Available tools
+
+The server exposes 11 tools.
+
+| Tool | Purpose | Required input |
+| --- | --- | --- |
+| `browser_init` | Start or reuse the managed Chrome session | None |
+| `navigate` | Open a URL | `url` |
+| `get_content` | Read full-page or selected HTML/text | None |
+| `find_selector` | Find a CSS selector from element text | `text` |
+| `click` | Click an element | `selector` |
+| `type` | Clear and type into an input | `selector`, `text` |
+| `wait` | Wait for a selector, navigation, or time | `type`, `value` |
+| `random_scroll` | Scroll with varied timing and distance | None |
+| `solve_captcha` | Return a placeholder attempt result | `type` |
+| `save_content_as_markdown` | Save as `.md`; currently blocked | `filePath` |
+| `browser_close` | Close the managed browser and reset workflow state | None |
+
+### Content-first workflow
+
+The server blocks blind interaction. Use this order:
+
 ```text
-User: "Get all the product names from this e-commerce page"
-AI: I'll extract the product information from the page.
-[Uses get_content tool with appropriate selectors]
-
-User: "Save the page content as text"
-AI: I'll get the text content of the entire page.
-[Uses get_content tool with type: 'text']
-
-User: "Save this page content as a markdown file"
-AI: I'll extract the page content and save it as a formatted markdown file.
-[Uses save_content_as_markdown tool with specified file path]
+browser_init → navigate → get_content → find_selector → click or type
 ```
 
+After a new navigation, call `get_content` again before clicking or typing.
+You can call `wait` after navigation when a page loads content slowly.
 
-#### Working with Proxies
-```text
-User: "Initialize a browser with a proxy server"
-AI: I'll set up the browser with your proxy configuration.
-[Uses browser_init with proxy: "https://proxy.example.com:8080"]
-```
+## Browser configuration
 
-## Available Tools
+Browser options are inputs to `browser_init`. They are not top-level MCP
+server settings.
 
-### Core Browser Tools
+| Option | Meaning |
+| --- | --- |
+| `headless` | Set `true` to hide the browser window. Default: `false`. |
+| `proxy` | Proxy URL such as `http://proxy.example.com:8080`. |
+| `profilePath` | Dedicated automation profile path. |
+| `disableXvfb` | Set `false` to start Xvfb on Linux. |
+| `connectOption.timeout` | Connection and setup timeout in ms. |
+| `connectOption.slowMo` | Delay operations in ms. |
+| `customConfig.chromePath` | Absolute path to a Chrome executable. |
+| `customConfig.chromeFlags` | Custom flags; replaces the server flag list. |
+| `contentPriority` | Content-priority suggestion settings. |
 
-| Tool Name | Description | Required Parameters | Optional Parameters |
-|-----------|-------------|---------------------|-------------------|
-| `browser_init` | Initialize stealth browser with advanced options | None | `headless`, `disableXvfb`, `proxy`, `profilePath`, `connectOption` |
-| `navigate` | Navigate to a URL | `url` | `waitUntil` |
-| `get_content` | Get page content (HTML or text) | None | `type`, `selector` |
-| `browser_close` | Close the browser instance | None | None |
+`contentPriority` is an object with `prioritizeContent` and
+`autoSuggestGetContent` Boolean values. It changes suggestions, but it does not
+remove the required content-first workflow.
 
-### Interaction Tools
-
-| Tool Name | Description | Required Parameters | Optional Parameters |
-|-----------|-------------|---------------------|-------------------|
-| `click` | Standard click on element | `selector` | `waitForNavigation` |
-| `type` | Type text into input field | `selector`, `text` | `delay` |
-| `wait` | Wait for various conditions | `type`, `value` | `timeout` |
-| `find_selector` | Find CSS selector for element containing specific text | `text` | `elementType`, `exact` |
-
-
-### Behavior Tools
-
-| Tool Name | Description | Required Parameters | Optional Parameters |
-|-----------|-------------|---------------------|-------------------|
-| `random_scroll` | Perform random scrolling with natural timing | None | None |
-
-### Element Discovery Tools
-
-| Tool Name | Description | Required Parameters | Optional Parameters |
-|-----------|-------------|---------------------|-------------------|
-| `find_selector` | Find CSS selector for element containing specific text | `text` | `elementType`, `exact` |
-
-### Content Tools
-
-| Tool Name | Description | Required Parameters | Optional Parameters |
-|-----------|-------------|---------------------|-------------------|
-| `save_content_as_markdown` | Extract page content and save it as a formatted markdown file | `filePath` | `contentType`, `selector`, `formatOptions` |
-
-### Anti-Detection Tools
-
-| Tool Name | Description | Required Parameters | Optional Parameters |
-|-----------|-------------|---------------------|-------------------|
-| `solve_captcha` | Attempt to solve captchas | `type` | None |
-
-## Advanced Features
-
-### Dynamic Selector Discovery
-
-The server includes intelligent element discovery capabilities through the `find_selector` tool:
-
-- **Text-based element finding**: Automatically locates elements containing specific text
-- **Smart CSS selector generation**: Creates unique, robust CSS selectors similar to Chrome DevTools
-- **Element type filtering**: Optionally restrict search to specific HTML elements (e.g., buttons, links)
-- **Exact or partial text matching**: Choose between precise text matching or substring searches
-- **Universal compatibility**: Works across any website without hardcoded selectors
-
-**Example Usage:**
-```text
-User: "Find the submit button that says 'Sign Up'"
-AI: I'll locate that button for you.
-[Uses find_selector with text: "Sign Up", elementType: "button"]
-
-AI: Found button at selector: "form > button.btn-primary:nth-of-type(2)"
-```
-
-This approach eliminates the need for manually crafted selectors and makes automation more reliable across different websites.
-
-### Natural Interactions
-
-The server includes tools designed for natural browsing behavior:
-
-- **Random scrolling**: Performs scrolling with natural timing and variable distances
-
-This feature helps avoid detection by sophisticated bot-detection systems
-that analyze user behavior patterns.
-
-### Captcha Handling
-
-The server includes basic support for solving common captcha types:
-
-- reCAPTCHA
-- hCaptcha
-- Cloudflare Turnstile
-
-This is best-effort interaction assistance, not a promise that every challenge
-can be solved.
-
-## Configuration
-
-### Automatic Chrome Path Detection (Enhanced in v1.3.0)
-
-The server automatically detects Chrome installation paths across different operating systems with significantly improved Windows support:
-
-- **Windows (v1.3.0+)**: 
-  - Registry-based detection for installed Chrome versions
-  - Searches 15+ common installation directories including Program Files, user-specific locations, and portable installations
-  - Support for Chrome Canary fallback
-  - Environment variable detection (`CHROME_PATH`, `PUPPETEER_EXECUTABLE_PATH`)
-  - Detailed troubleshooting guidance when Chrome is not found
-  
-- **macOS**: Looks for Chrome in `/Applications/Google Chrome.app/` and Chrome Canary locations
-
-- **Linux**: Checks multiple locations including `/usr/bin/google-chrome`, `/usr/bin/chromium-browser`, and snap installations
-
-**Windows Registry Detection** (NEW in v1.3.0):
-The server now queries Windows Registry to find Chrome installations, making detection more reliable across different installation types.
-
-If Chrome is not found automatically, you can specify a custom path using:
-1. Environment variable: `set CHROME_PATH="C:\Your\Chrome\Path\chrome.exe"`
-2. Browser init option: `customConfig.chromePath` when initializing the browser
-
-### Configuring Custom Options (like headless mode)
-Custom options like headless mode are **not configured in the MCP config file**. Instead, they're passed when initializing the browser using the `browser_init` tool:
-
-When you ask Claude to initialize a browser, you can specify options like:
-
-```
-Please initialize a browser with headless mode enabled and a 30-second timeout
-```
-
-Claude will then use the `browser_init` tool with appropriate parameters:
+Example request:
 
 ```json
 {
   "headless": true,
+  "proxy": "http://proxy.example.com:8080",
   "connectOption": {
-    "timeout": 30000
+    "timeout": 60000,
+    "slowMo": 100
+  },
+  "customConfig": {
+    "chromePath": "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"
   }
 }
 ```
 
-### Available Browser Options
-When initializing with `browser_init`, you can configure:
+### Chrome path
 
-- `headless`: true/false (Set to true for headless operation)
-- `disableXvfb`: true/false (Disable X Virtual Framebuffer)
-- `proxy`: "https://proxy:8080" (Proxy server URL)
-- `profilePath`: Absolute path to a dedicated automation profile. A new or empty directory receives an ownership marker.
-- `connectOption`: Additional connection options like:
-  - `slowMo`: 250 (Slow down operations by milliseconds)
-  - `timeout`: 60,000 (Connection timeout)
+The server first checks these environment variables:
 
-The MCP config file only tells Claude where to find the server - all browser-specific options are configured through your conversations with Claude.
+1. `CHROME_PATH`
+2. `PUPPETEER_EXECUTABLE_PATH`
 
-### Browser Ownership Safety
+If neither points to a file, the server checks common Chrome and Chromium
+locations. On Windows, it also checks the registry and common portable paths.
 
-The server owns one Chrome launcher handle. Normal close, startup failure,
-timeout, MCP disconnect, and signal shutdown all clean up through that exact
-handle. The server never searches for Chrome by process name and never closes
-your normal Chrome windows.
+You can set `CHROME_PATH` in the MCP client configuration:
 
-For safety, these browser-init overrides are rejected:
+```json
+{
+  "mcpServers": {
+    "puppeteer-real-browser": {
+      "command": "npx",
+      "args": [
+        "-y",
+        "puppeteer-real-browser-mcp-server@latest"
+      ],
+      "env": {
+        "CHROME_PATH": "/absolute/path/to/chrome"
+      }
+    }
+  }
+}
+```
+
+`PROXY_URL` is not a supported environment variable. Pass a proxy to
+`browser_init` instead.
+
+### Browser ownership protection
+
+The server keeps the exact launcher handle and process ID for the Chrome
+process it starts. Normal close, startup failure, timeout, MCP disconnect, and
+signal shutdown all clean up through that handle. It does not search for or
+close Chrome by process name.
+
+For safety, the server rejects settings that could attach to another browser
+or take ownership of a personal Chrome profile:
 
 - `customConfig.userDataDir`
-- `customConfig.port`, `customConfig.portStrictMode`, or `customConfig.handleSIGINT`
-- `connectOption.browserURL`, `connectOption.browserWSEndpoint`, or a custom transport
-- Chrome flags for `--remote-debugging-port`, `--remote-debugging-pipe`, or `--user-data-dir`
+- `customConfig.port`
+- `customConfig.portStrictMode`
+- `customConfig.handleSIGINT`
+- `connectOption.browserURL`
+- `connectOption.browserWSEndpoint`
+- `connectOption.transport`
+- `--remote-debugging-port`, `--remote-debugging-pipe`, and `--user-data-dir`
+  inside custom Chrome flags
 
-Use `profilePath` when you want a persistent automation profile. It must be an
-absolute path. A non-empty directory is accepted only when it contains the
-server's ownership marker.
-
-### Browser Options Example
-
-When initializing the browser with `browser_init`, you can configure:
-
-```json
-{
-  "headless": false,
-  "disableXvfb": false,
-  "proxy": "https://proxy:8080",
-  "connectOption": {
-    "slowMo": 250,
-    "timeout": 60000
-  }
-}
-```
-
-### Advanced Configuration Examples
-
-#### Specifying Custom Chrome Path
-```json
-{
-  "customConfig": {
-    "chromePath": "C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe"
-  }
-}
-```
-
-#### Using a Proxy
-```json
-{
-  "headless": true,
-  "proxy": "https://username:password@proxy.example.com:8080"
-}
-```
-
-#### Stealth Mode with Custom Options
-```json
-{
-  "headless": false,
-  "disableXvfb": false,
-  "connectOption": {
-    "slowMo": 100,
-    "devtools": false
-  }
-}
-```
-
-
-### Server Configuration
-
-For advanced users, you can modify the server behavior by editing the source code:
-
-- Change default viewport size in the `initializeBrowser` function
-- Adjust timeout values for various operations
-- Enable debug logging
+Use `profilePath` for persistent automation data. The directory must be
+absolute and either empty or already marked as owned by this server.
 
 ## Troubleshooting
 
-### Major Windows Connection Issues (Fixed in v1.3.0)
+### The MCP server does not appear
 
-**🔧 ECONNREFUSED Error Solutions**
+1. Check the tools are installed:
 
-Version 1.3.0 includes comprehensive fixes for the `connect ECONNREFUSED 127.0.0.1:60725` error commonly experienced on Windows systems:
-
-**Enhanced Chrome Path Detection:**
-- Added Windows Registry-based Chrome detection
-- Expanded search to 15+ Windows installation locations including portable installations
-- Added support for Chrome Canary fallback
-- Environment variable support (`CHROME_PATH`, `PUPPETEER_EXECUTABLE_PATH`)
-
-**Windows-Specific Launch Optimizations:**
-- Uses a longer connection timeout on Windows
-- Uses one system-assigned debugging port owned by the launcher
-- Cleans the exact launched process if connection fails
-
-**Connection Resilience Features:**
-- Direct connection to the owned launcher's loopback endpoint
-- System-assigned port, avoiding fixed-port collisions
-- Failure categorization and a bounded circuit breaker
-
-**If you're still experiencing ECONNREFUSED errors:**
-
-1. **Environment Variables (Recommended):**
    ```bash
-   set CHROME_PATH="C:\Program Files\Google\Chrome\Application\chrome.exe"
+   node --version
+   npm --version
+   npx --version
    ```
 
-2. **Manual Chrome Path Configuration:**
-   ```text
-   Ask Claude: "Initialize browser with custom Chrome path at C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe"
-   ```
+2. Check that Node.js is version 18 or newer.
+3. Check the JSON file for missing commas or quotes.
+4. Fully quit and reopen the MCP client.
+5. If a desktop app cannot find `npx`, use its absolute path as `command`.
+   Run `which npx` on macOS/Linux or `where npx` on Windows to find it.
 
-3. **Network Troubleshooting:**
-   ```bash
-   # Test localhost resolution
-   ping localhost
-   # Should resolve to 127.0.0.1
-   
-   # Check Windows hosts file
-   notepad C:\Windows\System32\drivers\etc\hosts
-   # Ensure: 127.0.0.1 localhost
-   ```
+Claude Desktop logs are stored here:
 
-4. **Chrome Process Management:**
-   - Close only the automation browser through the `browser_close` tool.
-   - Never terminate Chrome by process name because that also closes normal user windows.
+- macOS: `~/Library/Logs/Claude`
+- Windows: `%APPDATA%\Claude\logs`
 
-### Common Issues
+### Chrome is not found
 
-#### npx-Specific Issues
+Find the real Chrome executable, then set `CHROME_PATH` in the MCP client
+configuration. Common examples are:
 
-1. **"spawn npx ENOENT" or "command not found" errors**
-   - **Cause:** npx is not in your system PATH or Node.js is not properly installed
-   - **Solutions:**
-     - Verify Node.js installation: `node --version` and `npm --version`
-     - Reinstall Node.js from [nodejs.org](https://nodejs.org/)
-     - For NVM users, see the NVM-specific section below
+- Windows: `C:/Program Files/Google/Chrome/Application/chrome.exe`
+- macOS: `/Applications/Google Chrome.app/Contents/MacOS/Google Chrome`
+- Linux: `/usr/bin/google-chrome` or `/usr/bin/chromium`
 
-2. **"npx: command not found" in Claude Desktop/Cursor**
-   - **Windows:** Make sure to restart your IDE after installing Node.js
-   - **Mac/Linux:** Add npm to PATH: `export PATH="$PATH:$(npm bin -g)"`
-   - **Alternative:** Use the full path to npx: `/usr/local/bin/npx`
+Do not run the MCP client as Administrator or use `sudo npm install -g` only to
+solve a Chrome path problem.
 
-3. **npx hangs or takes too long**
-   - npx downloads the package on first run, which can take 30-60 seconds
-   - Ensure you have a stable internet connection
-   - Try clearing npm cache: `npm cache clean --force`
+### The server looks stuck when run in a terminal
 
-4. **Using NVM (Node Version Manager)?**
-   - Standard npx commands may fail with NVM
-   - **Solution 1:** Use absolute paths in your config:
-     ```json
-     {
-       "mcpServers": {
-         "puppeteer-real-browser": {
-           "command": "/Users/yourname/.nvm/versions/node/v20.0.0/bin/npx",
-           "args": ["puppeteer-real-browser-mcp-server@latest"]
-         }
-       }
-     }
-     ```
-   - **Solution 2:** Set a default Node version: `nvm alias default 20.0.0`
+This can be normal. A `stdio` MCP server waits for protocol messages from an MCP
+client. Use the MCP Inspector instead of typing into the process.
 
-5. **Permission denied errors with npx**
-   - **Mac/Linux:** Try with sudo: `sudo npx puppeteer-real-browser-mcp-server@latest`
-   - **Better solution:** Fix npm permissions: `npm config set prefix ~/.npm`
-
-#### Other Common Issues
-
-1. **"Maximum call stack size exceeded" errors**
-   - This was fixed in version 1.2.0 with comprehensive stack overflow protection
-   - The server now includes circuit breaker patterns and recursion depth tracking
-   - Timeout controls prevent hanging operations that could lead to stack overflow
-   - If you encounter this error, ensure you're using the latest version: `npx puppeteer-real-browser-mcp-server@latest`
-
-2. **"command not found" or "syntax error" when using npx**
-   - This was fixed in version 1.0.3 with the addition of a proper shebang line
-   - Make sure you're using the latest version: `npx puppeteer-real-browser-mcp-server@latest`
-   - For global installation: `npm install -g puppeteer-real-browser-mcp-server@latest`
-   - If still having issues, install globally: `npm install -g puppeteer-real-browser-mcp-server`
-   - Check your PATH includes npm global binaries: `npm config get prefix`
-
-3. **Browser won't start**
-   - Check if Chrome/Chromium is installed in standard locations
-   - **Windows specific troubleshooting**:
-     
-     **Step 1: Verify Chrome Installation Paths**
-     Check these locations in order:
-     - `C:\Program Files\Google\Chrome\Application\chrome.exe`
-     - `C:\Program Files (x86)\Google\Chrome\Application\chrome.exe`
-     - `%LOCALAPPDATA%\Google\Chrome\Application\chrome.exe`
-     - `%PROGRAMFILES%\Google\Chrome\Application\chrome.exe`
-     
-     **Step 2: Manual Path Configuration**
-     If Chrome is in a different location, specify it manually:
-     ```
-     Ask Claude: "Initialize browser with custom Chrome path at C:\Your\Chrome\Path\chrome.exe"
-     ```
-     
-     **Step 3: Windows Launch Arguments**
-     For Windows compatibility, use these launch arguments:
-     ```
-     Ask Claude: "Initialize browser with args --disable-gpu --disable-setuid-sandbox"
-     ```
-     
-     **Step 4: Windows-Specific Solutions**
-     - **Run as Administrator**: Try running your IDE/terminal as Administrator
-     - **Windows Defender**: Add Chrome and Node.js to Windows Defender exclusions
-     - **Antivirus Software**: Temporarily disable antivirus to test if it's blocking Chrome
-     - **User Account Control**: Lower UAC settings temporarily for testing
-     - **Chrome Processes**: Kill any existing Chrome processes in Task Manager
-     
-     **Step 5: Alternative Chrome Installation**
-     If Chrome detection still fails:
-     - Download Chrome directly from [google.com/chrome](https://www.google.com/chrome/)
-     - Install to default location (`C:\Program Files\Google\Chrome\`)
-     - Restart your IDE after installation
-     
-     **Step 6: PowerShell vs Command Prompt**
-     Try switching between PowerShell and Command Prompt:
-     - Test with `cmd.exe` instead of PowerShell
-     - Test with PowerShell instead of Command Prompt
-     
-     **Step 7: Node.js and npm Configuration**
-     - Ensure Node.js is added to PATH: `node --version`
-     - Clear npm cache: `npm cache clean --force`
-     - Reinstall global packages: `npm install -g puppeteer-real-browser-mcp-server@latest`
-     
-   - **Linux**: Install dependencies: `sudo apt-get install -y google-chrome-stable`
-   - **macOS**: Ensure Chrome is in `/Applications/`
-   - Try with `headless: true` first
-   - Check console output for Chrome path detection messages
-
-4. **Claude doesn't see the MCP server**
-   - Verify `claude_desktop_config.json` is in the correct location
-   - Check JSON syntax is valid (use [jsonlint.com](https://jsonlint.com/))
-   - Restart Claude Desktop completely
-   - Check for any error messages in Claude Desktop
-
-**4a. Claude Code CLI doesn't see the MCP server**
-   - **Installation Issues**:
-     - Verify `claude mcp add` command was successful
-     - Check command syntax: `claude mcp add puppeteer-real-browser -- npx puppeteer-real-browser-mcp-server@latest`
-     - Ensure you have the latest Claude Code CLI version
-   
-   - **Scope and Configuration**:
-     - Check which scope you used: local (default), project, or user
-     - For local scope: ensure you're in the correct project directory
-     - For project scope: verify `.mcp.json` exists in project root
-     - For user scope: check user config directory
-   
-   - **MCP Server Status**:
-     - Use `/mcp` command in Claude Code to check server status
-     - Look for the "puppeteer-real-browser" server in the list
-     - Check if server status shows "connected" or error messages
-   
-   - **Environment Variables**:
-     - If using custom environment variables (Chrome path, proxy), verify they're correctly set
-     - Test without environment variables first: `claude mcp add puppeteer-real-browser -- npx puppeteer-real-browser-mcp-server@latest`
-   
-   - **Node.js and npx Issues**:
-     - Verify Node.js version 18+: `node --version`
-     - Test npx directly: `npx puppeteer-real-browser-mcp-server@latest`
-     - Clear npm cache: `npm cache clean --force`
-   
-   - **Protocol Version Issues** (Known Issue):
-     - Claude CLI may show protocolVersion validation errors despite correct configuration
-     - This is a known issue with internal validation in Claude CLI
-     - Server may still work despite validation warnings
-   
-   - **Re-adding Server**:
-     ```bash
-     # Remove and re-add if issues persist
-     claude mcp remove puppeteer-real-browser
-     claude mcp add puppeteer-real-browser -- npx puppeteer-real-browser-mcp-server@latest
-     ```
-
-**4b. Cursor IDE doesn't see the MCP server**
-   - **Config File Location Issues**:
-     - Verify `mcp.json` is in the correct location:
-       - Global: `~/.cursor/mcp.json` (`%USERPROFILE%\.cursor\mcp.json` on Windows)
-       - Project: `.cursor/mcp.json` in your project root
-     - Ensure filename is exactly `mcp.json` (not `mcp.json.txt`)
-     - Check file permissions allow reading
-   
-   - **JSON Syntax Validation**:
-     - Use [jsonlint.com](https://jsonlint.com/) to validate JSON syntax
-     - Common issues: missing commas, incorrect quotes, trailing commas
-     - Ensure proper escaping of Windows paths: `"C:/Program Files/Google/Chrome/Application/chrome.exe"`
-   
-   - **Cursor IDE Restart Process**:
-     - Close Cursor IDE completely (check Task Manager on Windows)
-     - Wait 5 seconds
-     - Restart Cursor IDE
-     - Open Command Palette and check MCP servers are listed
-   
-   - **Environment Variables**:
-     - Verify Node.js is accessible: `node --version`
-     - Check PATH includes npm: `npm --version`
-     - Clear any conflicting environment variables
-   
-   - **Cursor IDE Version Compatibility**:
-     - Ensure Cursor IDE version supports MCP (latest versions)
-     - Update Cursor IDE if using an older version
-     - Check Cursor IDE documentation for MCP requirements
-
-5. **Permission denied errors**
-   - On Linux/Mac: Try `sudo npm install -g puppeteer-real-browser-mcp-server`
-   - Or use nvm to manage Node.js without sudo
-   - On Windows: Run command prompt as Administrator
-
-6. **Detection issues**
-   - Use appropriate delays between actions for better reliability
-   - Add random delays with `random_scroll`
-   - Use proxy if needed: `proxy: "http://proxy.example.com:8080"`
-
-7. **Memory leaks**
-   - Always close browser instances with `browser_close` when done
-   - Don't initialize multiple browsers without closing previous ones
-   - Check for uncaught exceptions that might prevent cleanup
-
-8. **Timeout errors**
-   - Increase timeout values: `{ "timeout": 60000 }`
-   - Use `wait` tool before interacting with elements
-   - Check network connectivity and website response times
-
-### Frequently Asked Questions
-
-**Q: When should I use npm install vs npx?**
-A: 
-- **Use npx (recommended for most users):** When using with Claude Desktop, Claude Code CLI, or Cursor IDE. The npx command in your config automatically downloads and runs the latest version without installation.
-- **Use npm install -g:** Only if you want to run the server directly from command line frequently, or if you're developing/contributing to the project.
-- **Never needed:** If you're just a Claude Desktop/Claude Code CLI user following the Quick Start guide - npx handles everything!
-
-**Q: Should I use Claude Desktop or Claude Code CLI?**
-A: Both are excellent choices, depending on your needs:
-
-**Claude Desktop:**
-- **Best for:** Simple web browsing automation, content extraction, basic form filling
-- **Setup:** Manual JSON config file editing
-- **Sharing:** Individual use only
-- **Interface:** Desktop GUI application
-- **Authentication:** None required
-
-**Claude Code CLI:**
-- **Best for:** Development workflows, team collaboration, project-specific automation
-- **Setup:** Simple command-line setup (`claude mcp add`)
-- **Sharing:** Supports team sharing via project scope
-- **Interface:** Command-line integration with IDEs
-- **Authentication:** OAuth support available
-- **Advanced Features:** Environment variables, scope control, server monitoring
-
-**Use Claude Code CLI if you:**
-- Work in development teams
-- Need project-specific browser automation
-- Want environment variable configuration
-- Prefer command-line workflows
-- Need server health monitoring
-
-**Use Claude Desktop if you:**
-- Want a simple GUI experience
-- Do individual browsing automation
-- Don't need team collaboration features
-- Prefer visual interfaces over command-line
-
-**Q: Why do we use @latest in the npx command?**
-A: The `@latest` tag ensures you always get the newest version with bug fixes and security updates. Without it, npx might cache an older version. It's especially important for actively maintained projects.
-
-**Q: Does this work with headless browsers?**
-A: Yes, set `headless: true` in browser_init options.
-
-**Q: Can I use multiple browsers at once?**
-A: Currently supports one browser instance. Close the current one before starting a new one.
-
-**Q: What captchas can it solve?**
-A: It provides best-effort interaction with common Turnstile widgets. It does not guarantee that a captcha will be solved.
-
-**Q: Is this detectable by websites?**
-A: It includes anti-detection behavior, but no browser automation is 100% undetectable.
-
-**Q: Can I use custom Chrome extensions?**
-A: Advanced users can pass Chrome's `--load-extension` flag through `customConfig.chromeFlags`. Use only extensions you trust.
-
-**Q: Does it work on all operating systems?**
-A: Yes, tested on Windows, macOS, and Linux. The server automatically detects Chrome installations on all platforms.
-
-**Q: What's the difference between Claude Desktop, Claude Code CLI, and Cursor IDE configurations?**
-A: Here's a comparison:
-
-| Feature | Claude Desktop | Claude Code CLI | Cursor IDE |
-|---------|---------------|-----------------|------------|
-| **Setup Method** | Manual JSON editing | Command-line (`claude mcp add`) | One-click install OR manual JSON |
-| **Config Location** | `claude_desktop_config.json` | `.mcp.json` (scoped) | `.cursor/mcp.json` |
-| **Team Sharing** | No | Yes (project scope) | Yes |
-| **Environment Variables** | Limited support | Full support | Full support |
-| **Scope Control** | No | Yes (local/project/user) | Project/Global |
-| **Server Monitoring** | No | Yes (`/mcp` command) | Limited |
-| **Authentication** | None | OAuth available | OAuth available |
-| **Best For** | Individual GUI use | Development teams | Code-focused workflows |
-
-**Command Examples:**
-- **Claude Desktop**: Edit config file with JSON
-- **Claude Code CLI**: `claude mcp add puppeteer-real-browser -- npx puppeteer-real-browser-mcp-server@latest`
-- **Cursor IDE**: One-click install or manual JSON config
-
-**Q: What if Chrome is installed in a non-standard location?**
-A: Version 1.3.0 dramatically improves Chrome detection. The server now searches 15+ locations including portable installations and uses Windows Registry detection. If Chrome is still not found automatically, you can:
-1. Set environment variable: `set CHROME_PATH="C:\Your\Chrome\Path\chrome.exe"`
-2. Use the `customConfig.chromePath` option: `{"customConfig": {"chromePath": "C:\\Custom\\Chrome\\chrome.exe"}}`
-
-**Q: Why am I getting "Chrome not found" or ECONNREFUSED errors on Windows?**
-A: Version 1.3.0 includes comprehensive fixes for Windows Chrome detection and connection issues. The server now automatically searches these locations and more:
-- `C:\Program Files\Google\Chrome\Application\chrome.exe`
-- `C:\Program Files (x86)\Google\Chrome\Application\chrome.exe` 
-- `%LOCALAPPDATA%\Google\Chrome\Application\chrome.exe`
-- `%USERPROFILE%\AppData\Local\Google\Chrome\Application\chrome.exe`
-- Chrome Canary installations
-- Portable Chrome installations
-- Registry-detected installations
-
-The server also implements multiple connection strategies with automatic fallback between localhost and 127.0.0.1, plus enhanced Windows-specific Chrome flags for better compatibility.
-
-**Q: I'm still getting ECONNREFUSED errors after upgrading to v1.3.0. What should I do?**
-A: Try these steps in order:
-1. Set the `CHROME_PATH` environment variable to your Chrome location
-2. Close the automation browser with `browser_close`, then retry initialization
-3. Check your Windows hosts file contains: `127.0.0.1 localhost`
-4. Try running your IDE as Administrator
-5. Add Chrome to Windows Defender exclusions
-6. If using a VPN/proxy, try disabling it temporarily
-
-### Debug Mode
-
-To enable debug logging:
+Test the published package:
 
 ```bash
-DEBUG=true npm start
+npx -y @modelcontextprotocol/inspector \
+  npx puppeteer-real-browser-mcp-server@latest
 ```
 
-Or when running from source:
-```bash
-DEBUG=true npm run dev
-```
+See the official [MCP Inspector guide](https://modelcontextprotocol.io/docs/tools/inspector)
+for usage details.
 
-### Getting Help
+### A page action is blocked
 
-If you're still having issues:
-1. Check the [GitHub Issues](https://github.com/your-organization/puppeteer-real-browser-mcp-server/issues)
-2. Create a new issue with:
-   - Your operating system
-   - Node.js version (`node --version`)
-   - npm version (`npm --version`)
-   - Full error message
-   - Steps to reproduce the problem
+Follow the required workflow:
+
+1. `browser_init`
+2. `navigate`
+3. `get_content`
+4. `find_selector` when you need a selector
+5. `click` or `type`
+
+If the page changed, call `get_content` again.
+
+### A browser connection times out
+
+- Check that the Chrome path exists.
+- Close the current managed browser with `browser_close`, then start it again.
+- Increase `connectOption.timeout` in the `browser_init` input.
+- Check whether security software is blocking the child Chrome process.
+- Include the full error message when reporting the problem.
+
+### Get help
+
+Search or open a [GitHub issue](https://github.com/withLinda/puppeteer-real-browser-mcp-server/issues).
+Include:
+
+- Operating system
+- Node.js and npm versions
+- MCP client name and version
+- Chrome version and executable path
+- Full error message
+- Exact steps that reproduce the problem
+
+Do not include passwords, cookies, tokens, or private page content.
 
 ## Development
 
-### Project Structure
+### Run from source
+
+```bash
+git clone https://github.com/withLinda/puppeteer-real-browser-mcp-server.git
+cd puppeteer-real-browser-mcp-server
+npm ci
+npm run build
+```
+
+Test the local build with the MCP Inspector:
+
+```bash
+npx -y @modelcontextprotocol/inspector node dist/index.js
+```
+
+To use the local build in an MCP client, use an absolute path:
+
+```json
+{
+  "mcpServers": {
+    "puppeteer-real-browser-local": {
+      "command": "node",
+      "args": [
+        "/absolute/path/to/puppeteer-real-browser-mcp-server/dist/index.js"
+      ]
+    }
+  }
+}
+```
+
+### Project structure
 
 ```text
-puppeteer-real-browser-mcp-server/
-├── src/
-│   ├── index.ts         # Main server implementation
-│   └── stealth-actions.ts # Browser interaction functions
-├── test/
-│   └── test-server.ts   # Test script
-├── package.json
-└── tsconfig.json
+src/index.ts                     MCP stdio server and request handlers
+src/tool-definitions.ts          Tool names and input schemas
+src/browser-manager.ts           Browser state, detection, and configuration
+src/managed-browser-session.ts   Owned Chrome launch and cleanup
+src/handlers/                    Tool implementations
+src/*.test.ts                    Unit and regression tests
+test/integration/                MCP protocol integration tests
+test/e2e/                        Real-browser tests
+test/safety/                     Browser cleanup safety guard
+scripts/check-packaged-server.ts Package smoke test
 ```
 
-### Building from Source
+### Test workflow
+
+Use TDD for behavior changes: write one failing test, make it pass, then clean
+up the code.
 
 ```bash
-# Install dependencies
-npm install
+# Browser cleanup safety guard
+npm run test:safety
 
-# Run in development mode
-npm run dev
+# Fast source tests
+npm run test:unit
 
-# Build for production
+# MCP protocol integration tests
+npm run test:integration
+
+# Build the package
 npm run build
 
-# Test the server
-npm test
+# Test the built npm package shape and stdio lifecycle
+npm run test:package:smoke:built
+
+# Real Chrome tests
+npm run test:e2e
+
+# Release-focused automated checks
+npm run test:all
 ```
 
-### Adding New Tools
-
-To add a new tool:
-
-1. Add the tool definition to the `TOOLS` array in `src/index.ts`
-2. Implement the tool handler in the `CallToolRequestSchema` handler
-3. Test the new tool functionality
-
-## Testing
-
-This project includes a comprehensive testing suite with multiple categories optimized for different purposes:
-
-### Quick Tests (CI/CD) - ~30 seconds
-```bash
-npm run test:quick    # Fast Jest tests for protocol compliance
-npm test              # Alias for test:quick
-```
-
-### Comprehensive Tests - ~5-10 minutes  
-```bash
-npm run test:full     # End-to-end MCP client testing
-```
-
-### Performance Testing - ~2-3 minutes
-```bash
-npm run test:performance  # Browser performance benchmarking
-```
-
-Performance tests measure:
-- Browser initialization timing (5 trials)
-- Navigation performance across different site types
-- Concurrent operation handling
-- Session longevity testing (30+ operations over 30 seconds)
-
-### Debug Tools - ~10 seconds
-```bash
-npm run test:debug    # Environment diagnostics and troubleshooting
-```
-
-Debug tools provide:
-- Environment validation (Node.js version, platform, memory)
-- Chrome installation detection with specific paths
-- Quick server health check with startup timing
-- Network connectivity validation
-- Build status verification
-
-### All Tests - ~7-13 minutes
-```bash
-npm run test:all      # Runs quick + full + performance tests
-npm run test:dashboard # Unified test runner with reporting
-```
-
-The test dashboard provides:
-- Unified execution of multiple test categories
-- Real-time progress reporting
-- Performance metrics and timing
-- Overall test status summary
-- Recommendations for failed tests
-- JSON results saved to `test-results/` directory
-
-### Integration Testing
-```bash
-npm run test:integration  # Claude Code CLI integration testing
-```
-
-For detailed testing information, see [TESTING.md](TESTING.md).
+During TDD, use `npm run test:watch`. Before running real-browser tests, note
+the Chrome processes already open on your machine. After testing, verify that
+only the Chrome process started by the test was closed.
 
 ## Contributing
 
-Contributions are welcome! Please feel free to submit a Pull Request.
+Issues and pull requests are welcome. For a code change:
 
-1. Fork the repository
-2. Create your feature branch (`git checkout -b feature/amazing-feature`)
-3. Commit your changes (`git commit -m 'Add some amazing feature'`)
-4. Push to the branch (`git push origin feature/amazing-feature`)
-5. Open a Pull Request
+1. Create a focused branch.
+2. Add a failing test for one behavior.
+3. Make the smallest code change that passes the test.
+4. Refactor while tests stay green.
+5. Run the safety, source, build, and package checks.
+6. Explain the root cause, solution, prevention, and verification in the commit
+   message.
 
 ## License
 
-This project is licensed under the MIT License - see the LICENSE file for details.
+This project uses the [MIT License](./LICENSE).
 
 ## Acknowledgments
 
 The original implementation and public API were based on
-[puppeteer-real-browser](https://github.com/ZFC-Digital/puppeteer-real-browser)
-by ZFC Digital. Version 1.6.0 replaces that end-of-life runtime dependency with
-an internal managed launcher so the server can prove which Chrome process it
-owns and closes.
-
-- GitHub: [https://github.com/ZFC-Digital/puppeteer-real-browser](https://github.com/ZFC-Digital/puppeteer-real-browser)
-- npm: [https://www.npmjs.com/package/puppeteer-real-browser](https://www.npmjs.com/package/puppeteer-real-browser)
+[`puppeteer-real-browser`](https://github.com/ZFC-Digital/puppeteer-real-browser)
+by ZFC Digital. The current source replaces that end-of-life runtime dependency
+with an internal managed launcher built from `chrome-launcher`,
+`rebrowser-puppeteer-core`, and `ghost-cursor`.
