@@ -9,7 +9,11 @@ export default defineConfig({
     environment: 'node',
     
     // Test file patterns (co-located tests + test directory)
-    include: ['src/**/*.{test,spec}.ts', 'test/**/*.{test,spec}.ts'],
+    include: [
+      'src/**/*.{test,spec}.ts',
+      'test/**/*.{test,spec}.ts',
+      'scripts/**/*.{test,spec}.ts',
+    ],
     
     // Exclude patterns
     exclude: ['node_modules', 'dist', 'tests/mcp-testing', 'test/e2e/**'],

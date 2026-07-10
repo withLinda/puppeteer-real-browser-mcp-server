@@ -4,6 +4,8 @@ import { tmpdir } from 'os';
 import { dirname, join, resolve } from 'path';
 import { fileURLToPath } from 'url';
 
+import { environmentForNestedNpmPack } from './npm-pack-environment.js';
+
 const PROJECT_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const npmCommand = process.platform === 'win32' ? 'npm.cmd' : 'npm';
 
@@ -56,10 +58,12 @@ async function runCommand(
   command: string,
   args: string[],
   cwd: string = PROJECT_ROOT,
+  env: NodeJS.ProcessEnv = process.env,
 ): Promise<CommandResult> {
   return await new Promise((resolveCommand, rejectCommand) => {
     const child = spawn(command, args, {
       cwd,
+      env,
       stdio: ['ignore', 'pipe', 'pipe'],
     });
 
@@ -108,13 +112,18 @@ async function buildIfNeeded(skipBuild: boolean): Promise<void> {
 
 async function createTarball(packDir: string): Promise<string> {
   console.log('Packing project into a temporary tarball...');
-  const { stdout } = await runCommand(npmCommand, [
-    'pack',
-    '--json',
-    '--ignore-scripts',
-    '--pack-destination',
-    packDir,
-  ]);
+  const { stdout } = await runCommand(
+    npmCommand,
+    [
+      'pack',
+      '--json',
+      '--ignore-scripts',
+      '--pack-destination',
+      packDir,
+    ],
+    PROJECT_ROOT,
+    environmentForNestedNpmPack(),
+  );
 
   const parsedOutput = JSON.parse(stdout.trim()) as Array<{ filename?: string }>;
   const tarballName = parsedOutput[0]?.filename;
